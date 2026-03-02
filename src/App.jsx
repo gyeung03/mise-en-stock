@@ -152,7 +152,7 @@ export default function App() {
       {/* Tabs */}
       <div style={{background:"#7068a8", borderBottom:`1px solid #6a5aaa`, position:"sticky", top:73, zIndex:19}}>
         <div style={{maxWidth:680, margin:"0 auto", display:"flex", padding:"0 20px"}}>
-          {[["inventory","Inventory"],["add","+ Add"]].map(([t,l]) => (
+          {[["inventory","Inventory"],["add","+ Add"],["howto","? How to Use"]].map(([t,l]) => (
             <button key={t} onClick={() => setTab(t)} style={{...btnBase, padding:"11px 18px", background:"none",
               color:tab===t?CARD:"#c4b8e8", borderBottom:tab===t?`2px solid ${CARD}`:"2px solid transparent", marginBottom:-1}}>
               {l}
@@ -280,5 +280,91 @@ export default function App() {
         )}
       </div>
     </div>
+        {tab === "howto" && (
+          <div style={{maxWidth:480, margin:"0 auto"}}>
+            <div style={{background:CARD, borderRadius:4, border:"3px solid #2d1f5e", padding:"16px 20px", fontFamily:"'Inter', sans-serif"}}>
+              <div style={{borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6}}>
+                <div style={{fontSize:38, fontWeight:900, color:TEXT, lineHeight:1, letterSpacing:"-1px"}}>How to Use</div>
+                <div style={{fontSize:13, color:TEXT, fontWeight:600, marginTop:4}}>Mise en Stock Pantry Tracker</div>
+              </div>
+              <div style={{borderBottom:"3px solid #2d1f5e", paddingBottom:6, marginBottom:6}}>
+                <div style={{fontSize:12, color:TEXT}}>Serving size <strong>1 photo</strong></div>
+                <div style={{fontSize:12, color:TEXT}}>Steps per serving <strong>2</strong></div>
+              </div>
+              <div style={{borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6}}>
+                <div style={{fontSize:11, color:TEXT, fontWeight:600}}>Amount per photo</div>
+                <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-end"}}>
+                  <div style={{fontSize:14, fontWeight:900, color:TEXT}}>Items identified</div>
+                  <div style={{fontSize:40, fontWeight:900, color:TEXT, lineHeight:1}}>∞</div>
+                </div>
+              </div>
+              {[
+                {emoji:"📸", title:"Take a photo in Claude", step:"Step 1", desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf."},
+                {emoji:"💬", title:'Say "Add this to Mise en Stock"', step:"Step 2", desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database."},
+                {emoji:"🗑️", title:'Say "Remove this from Mise en Stock"', step:"Step 3", desc:"Used something up? Send a photo and Claude will find the matching item and remove it or reduce the quantity automatically."},
+                {emoji:"↻", title:"Refresh the app", step:"Step 4", desc:"Hit the ↻ button in the top right after any Claude update and your inventory will reflect the changes instantly."},
+                {emoji:"✏️", title:"Manual edits", step:"Step 5", desc:"Tap any item to expand it and use the +/− buttons to adjust quantity, or the trash icon to delete it directly in the app."},
+              ].map(({emoji,title,step,desc}) => (
+                <div key={step} style={{borderTop:"1px solid #2d1f5e", padding:"10px 0"}}>
+                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4}}>
+                    <div style={{fontSize:13, fontWeight:800, color:TEXT}}>{emoji} {title}</div>
+                    <div style={{fontSize:11, color:TEXT_MUTED, whiteSpace:"nowrap", marginLeft:8}}>{step}</div>
+                  </div>
+                  <div style={{fontSize:12, color:TEXT_MUTED, lineHeight:1.6}}>{desc}</div>
+                </div>
+              ))}
+              <div style={{borderTop:"3px solid #2d1f5e", marginTop:4, paddingTop:8}}>
+                <div style={{fontSize:12, color:TEXT, lineHeight:1.6}}>
+                  <strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every visible item and updates your pantry in one shot.
+                </div>
+              </div>
+              <div style={{borderTop:"8px solid #2d1f5e", marginTop:10, paddingTop:8, textAlign:"center"}}>
+                <div style={{fontSize:10, color:TEXT_MUTED, letterSpacing:"1.5px", fontWeight:700}}>POWERED BY TINKERBOT STUDIOS</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {tab === "howto" && (
+          <div style={{maxWidth:480}}>
+            {[
+              {
+                step:"1", emoji:"📸", title:"Take a photo in Claude",
+                desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf."
+              },
+              {
+                step:"2", emoji:"💬", title:'Say "Add this to Mise en Stock"',
+                desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database."
+              },
+              {
+                step:"3", emoji:"↻", title:"Refresh the app",
+                desc:'Hit the ↻ button in the top right of this app and your new items will appear instantly — no manual typing needed.'
+              },
+              {
+                step:"4", emoji:"🗑️", title:"Remove items manually",
+                desc:"When you use something up, tap any item in the inventory to expand it and hit the trash icon to remove it, or use the − button to reduce quantity."
+              },
+            ].map(({step,emoji,title,desc}) => (
+              <div key={step} style={{background:CARD, borderRadius:14, border:`1px solid ${CARD_BORDER}`, padding:20, marginBottom:12, display:"flex", gap:16, alignItems:"flex-start"}}>
+                <div style={{width:40, height:40, borderRadius:10, background:"#7c6bb5", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0}}>
+                  {emoji}
+                </div>
+                <div>
+                  <div style={{fontWeight:700, fontSize:14, color:TEXT, marginBottom:4}}>{title}</div>
+                  <div style={{fontSize:13, color:TEXT_MUTED, lineHeight:1.5}}>{desc}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{background:"#7c6bb520", border:`1px solid #7c6bb555`, borderRadius:14, padding:16, marginTop:4}}>
+              <div style={{fontWeight:700, fontSize:13, color:"#5a4a9e", marginBottom:4}}>💡 Pro tip</div>
+              <div style={{fontSize:13, color:TEXT_MUTED, lineHeight:1.5}}>
+                You can also ask Claude to remove items — just send a photo and say "Remove this from Mise en Stock" and it'll update the database automatically.
+              </div>
+            </div>
+          </div>
+        )}
+
+
   );
 }
