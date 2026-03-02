@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://wzcnkfczkfjmphjzaeea.supabase.co";
@@ -56,18 +56,12 @@ export default function App() {
     setTimeout(() => setNotification(null), 2500);
   };
 
-  // Load items from Supabase
-  useEffect(() => {
-    fetchItems();
-  }, []);
+  useEffect(() => { fetchItems(); }, []);
 
   const fetchItems = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("pantry_items")
-      .select("*")
-      .order("category", { ascending: true });
-    if (error) { notify("Failed to load items", "error"); }
+    const { data, error } = await supabase.from("pantry_items").select("*").order("category");
+    if (error) notify("Failed to load items", "error");
     else setItems(data);
     setLoading(false);
   };
@@ -75,11 +69,8 @@ export default function App() {
   const updateQty = async (id, delta) => {
     const item = items.find(i => i.id === id);
     const newQty = Math.max(0, item.quantity + delta);
-    const { error } = await supabase
-      .from("pantry_items")
-      .update({ quantity: newQty, updated_at: new Date().toISOString() })
-      .eq("id", id);
-    if (!error) setItems(p => p.map(i => i.id === id ? { ...i, quantity: newQty } : i));
+    const { error } = await supabase.from("pantry_items").update({ quantity: newQty, updated_at: new Date().toISOString() }).eq("id", id);
+    if (!error) setItems(p => p.map(i => i.id === id ? {...i, quantity: newQty} : i));
   };
 
   const deleteItem = async (id) => {
@@ -89,10 +80,7 @@ export default function App() {
 
   const addItem = async () => {
     if (!addForm.item.trim() || !addForm.category.trim()) return;
-    const { data, error } = await supabase
-      .from("pantry_items")
-      .insert([{ ...addForm, quantity: Number(addForm.quantity) }])
-      .select();
+    const { data, error } = await supabase.from("pantry_items").insert([{...addForm, quantity: Number(addForm.quantity)}]).select();
     if (!error) {
       setItems(p => [...p, data[0]]);
       setAddForm({ item:"", brand:"", category:"", container:"Can", quantity:1 });
@@ -116,7 +104,7 @@ export default function App() {
     return acc;
   }, {});
 
-  const toggleCat = cat => setCollapsedCats(p => ({ ...p, [cat]: !p[cat] }));
+  const toggleCat = cat => setCollapsedCats(p => ({...p, [cat]: !p[cat]}));
 
   const inputStyle = {
     width:"100%", padding:"10px 14px", background:CARD,
@@ -124,6 +112,14 @@ export default function App() {
     color:TEXT, outline:"none", boxSizing:"border-box",
   };
   const btnBase = { border:"none", cursor:"pointer", fontWeight:600, fontSize:13 };
+
+  const HOW_TO_STEPS = [
+    { emoji:"📸", title:"Take a photo in Claude", step:"Step 1", desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf." },
+    { emoji:"💬", title:'Say "Add this to Mise en Stock"', step:"Step 2", desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database." },
+    { emoji:"🗑️", title:'Say "Remove this from Mise en Stock"', step:"Step 3", desc:"Used something up? Send a photo and Claude will find the matching item and remove it or reduce the quantity automatically." },
+    { emoji:"↻", title:"Refresh the app", step:"Step 4", desc:"Hit the ↻ button in the top right after any Claude update and your inventory will reflect the changes instantly." },
+    { emoji:"✏️", title:"Manual edits", step:"Step 5", desc:"Tap any item to expand it and use the +/− buttons to adjust quantity, or the trash icon to delete it directly in the app." },
+  ];
 
   return (
     <div style={{fontFamily:"'Inter',sans-serif", minHeight:"100vh", background:BG, color:TEXT}}>
@@ -136,7 +132,7 @@ export default function App() {
             <div style={{width:44, height:44, borderRadius:12, background:CARD, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0}}>🥫</div>
             <div>
               <span style={{fontWeight:900, fontSize:17, letterSpacing:"3px", color:CARD}}>MISE EN STOCK</span>
-              <div style={{fontSize:11, color:"#d4c8f0", letterSpacing:"1px", marginTop:2}}>by tinkerbot studios</div>
+              <div style={{fontSize:11, color:"#d4c8f0", letterSpacing:"1px", marginTop:2}}>powered by tinkerbot studios</div>
             </div>
           </div>
           <div style={{display:"flex", gap:6, alignItems:"center"}}>
@@ -152,7 +148,7 @@ export default function App() {
       {/* Tabs */}
       <div style={{background:"#7068a8", borderBottom:`1px solid #6a5aaa`, position:"sticky", top:73, zIndex:19}}>
         <div style={{maxWidth:680, margin:"0 auto", display:"flex", padding:"0 20px"}}>
-          {[["inventory","Inventory"],["add","+ Add"],["howto","? How to Use"]].map(([t,l]) => (
+          {[["inventory","Inventory"],["add","+ Add"],["howto","How to Use"]].map(([t,l]) => (
             <button key={t} onClick={() => setTab(t)} style={{...btnBase, padding:"11px 18px", background:"none",
               color:tab===t?CARD:"#c4b8e8", borderBottom:tab===t?`2px solid ${CARD}`:"2px solid transparent", marginBottom:-1}}>
               {l}
@@ -278,11 +274,11 @@ export default function App() {
             </button>
           </div>
         )}
-      </div>
-    </div>
+
+        {/* HOW TO USE */}
         {tab === "howto" && (
           <div style={{maxWidth:480, margin:"0 auto"}}>
-            <div style={{background:CARD, borderRadius:4, border:"3px solid #2d1f5e", padding:"16px 20px", fontFamily:"'Inter', sans-serif"}}>
+            <div style={{background:CARD, borderRadius:4, border:"3px solid #2d1f5e", padding:"16px 20px"}}>
               <div style={{borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6}}>
                 <div style={{fontSize:38, fontWeight:900, color:TEXT, lineHeight:1, letterSpacing:"-1px"}}>How to Use</div>
                 <div style={{fontSize:13, color:TEXT, fontWeight:600, marginTop:4}}>Mise en Stock Pantry Tracker</div>
@@ -298,13 +294,7 @@ export default function App() {
                   <div style={{fontSize:40, fontWeight:900, color:TEXT, lineHeight:1}}>∞</div>
                 </div>
               </div>
-              {[
-                {emoji:"📸", title:"Take a photo in Claude", step:"Step 1", desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf."},
-                {emoji:"💬", title:'Say "Add this to Mise en Stock"', step:"Step 2", desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database."},
-                {emoji:"🗑️", title:'Say "Remove this from Mise en Stock"', step:"Step 3", desc:"Used something up? Send a photo and Claude will find the matching item and remove it or reduce the quantity automatically."},
-                {emoji:"↻", title:"Refresh the app", step:"Step 4", desc:"Hit the ↻ button in the top right after any Claude update and your inventory will reflect the changes instantly."},
-                {emoji:"✏️", title:"Manual edits", step:"Step 5", desc:"Tap any item to expand it and use the +/− buttons to adjust quantity, or the trash icon to delete it directly in the app."},
-              ].map(({emoji,title,step,desc}) => (
+              {HOW_TO_STEPS.map(({emoji, title, step, desc}) => (
                 <div key={step} style={{borderTop:"1px solid #2d1f5e", padding:"10px 0"}}>
                   <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4}}>
                     <div style={{fontSize:13, fontWeight:800, color:TEXT}}>{emoji} {title}</div>
@@ -325,46 +315,7 @@ export default function App() {
           </div>
         )}
 
-
-        {tab === "howto" && (
-          <div style={{maxWidth:480}}>
-            {[
-              {
-                step:"1", emoji:"📸", title:"Take a photo in Claude",
-                desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf."
-              },
-              {
-                step:"2", emoji:"💬", title:'Say "Add this to Mise en Stock"',
-                desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database."
-              },
-              {
-                step:"3", emoji:"↻", title:"Refresh the app",
-                desc:'Hit the ↻ button in the top right of this app and your new items will appear instantly — no manual typing needed.'
-              },
-              {
-                step:"4", emoji:"🗑️", title:"Remove items manually",
-                desc:"When you use something up, tap any item in the inventory to expand it and hit the trash icon to remove it, or use the − button to reduce quantity."
-              },
-            ].map(({step,emoji,title,desc}) => (
-              <div key={step} style={{background:CARD, borderRadius:14, border:`1px solid ${CARD_BORDER}`, padding:20, marginBottom:12, display:"flex", gap:16, alignItems:"flex-start"}}>
-                <div style={{width:40, height:40, borderRadius:10, background:"#7c6bb5", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0}}>
-                  {emoji}
-                </div>
-                <div>
-                  <div style={{fontWeight:700, fontSize:14, color:TEXT, marginBottom:4}}>{title}</div>
-                  <div style={{fontSize:13, color:TEXT_MUTED, lineHeight:1.5}}>{desc}</div>
-                </div>
-              </div>
-            ))}
-            <div style={{background:"#7c6bb520", border:`1px solid #7c6bb555`, borderRadius:14, padding:16, marginTop:4}}>
-              <div style={{fontWeight:700, fontSize:13, color:"#5a4a9e", marginBottom:4}}>💡 Pro tip</div>
-              <div style={{fontSize:13, color:TEXT_MUTED, lineHeight:1.5}}>
-                You can also ask Claude to remove items — just send a photo and say "Remove this from Mise en Stock" and it'll update the database automatically.
-              </div>
-            </div>
-          </div>
-        )}
-
-
+      </div>
+    </div>
   );
 }
