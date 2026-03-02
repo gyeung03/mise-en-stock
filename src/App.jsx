@@ -99,6 +99,8 @@ export default function App() {
   const [scanResult, setScanResult] = useState(null);
   const [scanMode, setScanMode] = useState("add");
   const [collapsedCats, setCollapsedCats] = useState({});
+  const [newCatReview, setNewCatReview] = useState(null);
+  const [catEdits, setCatEdits] = useState({});
   const fileRef = useRef();
   const nextId = useRef(200);
 
@@ -156,17 +158,31 @@ export default function App() {
   };
 
   const applyScan = scanned => {
-    if(scanMode==="add"){
-      setItems(p=>[...p,...scanned.map(s=>({...s,id:nextId.current++,quantity:s.quantity||1}))]);
-      notify(`Added ${scanned.length} item(s)!`);
+    const existingCats = Array.from(new Set(items.map(i => i.category)));
+    const newCats = [...new Set(scanned.map(s => s.category).filter(c => !existingCats.includes(c)))];
+
+    if (scanMode === "add" && newCats.length > 0) {
+      setNewCatReview({ scanned, newCats });
+      setCatEdits(Object.fromEntries(newCats.map(c => [c, c])));
+      return;
+    }
+    commitScan(scanned);
+  };
+
+  const commitScan = (scanned, edits = {}) => {
+    const resolved = scanned.map(s => ({ ...s, category: edits[s.category] || s.category }));
+    if (scanMode === "add") {
+      setItems(p => [...p, ...resolved.map(s => ({ ...s, id: nextId.current++, quantity: s.quantity || 1 }))]);
+      notify(`Added ${resolved.length} item(s)!`);
     } else {
-      let upd=[...items], removed=0;
-      scanned.forEach(s=>{
-        const idx=upd.findIndex(i=>i.item.toLowerCase().includes(s.item.toLowerCase())||s.item.toLowerCase().includes(i.item.toLowerCase()));
-        if(idx!==-1){ const nq=upd[idx].quantity-(s.quantity||1); if(nq<=0) upd.splice(idx,1); else upd[idx]={...upd[idx],quantity:nq}; removed++; }
+      let upd = [...items], removed = 0;
+      resolved.forEach(s => {
+        const idx = upd.findIndex(i => i.item.toLowerCase().includes(s.item.toLowerCase()) || s.item.toLowerCase().includes(i.item.toLowerCase()));
+        if (idx !== -1) { const nq = upd[idx].quantity - (s.quantity || 1); if (nq <= 0) upd.splice(idx, 1); else upd[idx] = { ...upd[idx], quantity: nq }; removed++; }
       });
       setItems(upd); notify(`Removed ${removed} item(s)`);
     }
+    setNewCatReview(null); setCatEdits({});
     setScanResult(null); setScanImage(null); setTab("inventory");
   };
 
@@ -377,6 +393,41 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {newCatReview && (
+        <div style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:16}}>
+          <div style={{background:CARD, borderRadius:16, padding:24, maxWidth:440, width:"100%", boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <h3 style={{margin:"0 0 6px", fontSize:16, fontWeight:800, color:TEXT}}>✨ New Categories Found</h3>
+            <p style={{fontSize:13, color:TEXT_MUTED, margin:"0 0 18px"}}>The AI suggested these new categories. Edit the names or pick an existing one before adding.</p>
+            {newCatReview.newCats.map(cat => (
+              <div key={cat} style={{marginBottom:14}}>
+                <label style={{fontSize:12, fontWeight:600, color:TEXT_SUB, display:"block", marginBottom:5}}>
+                  AI suggested: <span style={{color:"#7c6bb5"}}>{cat}</span>
+                </label>
+                <input
+                  list="existing-cats"
+                  value={catEdits[cat] || cat}
+                  onChange={e => setCatEdits(p => ({...p, [cat]: e.target.value}))}
+                  style={inputStyle}
+                />
+              </div>
+            ))}
+            <datalist id="existing-cats">
+              {Array.from(new Set(items.map(i => i.category))).sort().map(c => <option key={c} value={c}/>)}
+            </datalist>
+            <div style={{display:"flex", gap:8, marginTop:20}}>
+              <button onClick={() => commitScan(newCatReview.scanned, catEdits)}
+                style={{...btnBase, flex:1, padding:"11px", background:"#7c6bb5", color:"white", borderRadius:9, fontSize:13, fontWeight:700}}>
+                ✅ Looks good, add items
+              </button>
+              <button onClick={() => { setNewCatReview(null); setCatEdits({}); }}
+                style={{...btnBase, padding:"11px 16px", background:"white", border:`1px solid ${CARD_BORDER}`, borderRadius:9, color:TEXT_SUB}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
