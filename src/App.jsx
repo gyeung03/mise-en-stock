@@ -33,12 +33,13 @@ function QBadge({q}) {
   return <span style={{background:bg,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:12,fontWeight:700,minWidth:22,textAlign:"center"}}>{q}</span>;
 }
 
-function timeAgo(date) {
-  const diff = Math.floor((Date.now()-date)/1000);
-  if(diff<60) return "just now";
-  if(diff<3600) return Math.floor(diff/60)+"m ago";
-  if(diff<86400) return Math.floor(diff/3600)+"h ago";
-  return Math.floor(diff/86400)+"d ago";
+function formatEST(dateStr) {
+  return new Date(dateStr).toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    month: "numeric", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit",
+    hour12: true
+  });
 }
 
 async function sbFetch(path, opts={}) {
@@ -424,7 +425,7 @@ export default function App() {
                       <div style={{flex:1}}>
                         <div style={{fontWeight:600,fontSize:14,color:DARK}}>{e.item}</div>
                         <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>
-                          {e.type==="added"?"Added":"Removed"} {e.qty} &bull; {timeAgo(new Date(e.at).getTime())}
+                          {e.type==="added"?"Added":"Removed"} {e.qty} &bull; {formatEST(e.at)}
                           {e.category&&<span> &bull; {e.category}</span>}
                         </div>
                       </div>
