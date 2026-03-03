@@ -505,4 +505,72 @@ export default function App() {
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <button onClick={() => applyScan(scanResult)}
-                    style={{ ...btnBase, flex:1, padding:"11px", borderRadius:8, background:s
+                    style={{ ...btnBase, flex:1, padding:"11px", borderRadius:8, background:scanMode==="add"?"#16a34a":"#dc2626", color:"white", fontSize:14 }}>
+                    {scanMode === "add" ? `➕ Add ${scanResult.length} item(s)` : `➖ Remove ${scanResult.length} item(s)`}
+                  </button>
+                  <button onClick={() => { setScanResult(null); setScanImg(null); }}
+                    style={{ ...btnBase, padding:"11px 16px", borderRadius:8, background:CARD_BORDER_LIGHT, color:TEXT, fontSize:14 }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {scanResult?.error && (
+              <div style={{ background:"#fff5f5", border:"1px solid #fecaca", borderRadius:8, padding:14, color:"#dc2626", fontSize:13 }}>
+                ⚠️ Couldn't identify items. Try a clearer or better-lit photo.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* HOW TO USE */}
+        {tab === "howto" && (
+          <div style={{ maxWidth:480, margin:"0 auto" }}>
+            <div style={{ background:CARD, borderRadius:4, border:"3px solid #2d1f5e", padding:"16px 20px" }}>
+              <div style={{ borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6 }}>
+                <div style={{ fontSize:38, fontWeight:900, color:TEXT, lineHeight:1, letterSpacing:"-1px" }}>How to Use</div>
+                <div style={{ fontSize:13, color:TEXT, fontWeight:600, marginTop:4 }}>Mise en Stock Pantry Tracker</div>
+              </div>
+              <div style={{ borderBottom:"3px solid #2d1f5e", paddingBottom:6, marginBottom:6 }}>
+                <div style={{ fontSize:12, color:TEXT }}>Serving size <strong>1 photo</strong></div>
+                <div style={{ fontSize:12, color:TEXT }}>Steps per serving <strong>2</strong></div>
+              </div>
+              <div style={{ borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6 }}>
+                <div style={{ fontSize:11, color:TEXT, fontWeight:600 }}>Amount per photo</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
+                  <div style={{ fontSize:14, fontWeight:900, color:TEXT }}>Items identified</div>
+                  <div style={{ fontSize:40, fontWeight:900, color:TEXT, lineHeight:1 }}>∞</div>
+                </div>
+              </div>
+              {[
+                { emoji:"📸", title:"Take a photo in Claude", step:"Step 1", desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf." },
+                { emoji:"💬", title:'Say "Add this to Mise en Stock"', step:"Step 2", desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database." },
+                { emoji:"🗑️", title:'Say "Remove this from Mise en Stock"', step:"Step 3", desc:"Used something up? Send a photo and Claude will find the matching item and remove it or reduce the quantity automatically." },
+                { emoji:"↻",  title:"Refresh the app", step:"Step 4", desc:"Hit the ↻ button in the top right after any Claude update and your inventory will reflect the changes instantly." },
+                { emoji:"✏️", title:"Manual edits", step:"Step 5", desc:"Tap any item to expand it and use the +/− buttons to adjust quantity, or the trash icon to delete it directly in the app." },
+              ].map(({ emoji, title, step, desc }) => (
+                <div key={step} style={{ borderTop:"1px solid #2d1f5e", padding:"10px 0" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:TEXT }}>{emoji} {title}</div>
+                    <div style={{ fontSize:11, color:TEXT_MUTED, whiteSpace:"nowrap", marginLeft:8 }}>{step}</div>
+                  </div>
+                  <div style={{ fontSize:12, color:TEXT_MUTED, lineHeight:1.6 }}>{desc}</div>
+                </div>
+              ))}
+              <div style={{ borderTop:"3px solid #2d1f5e", marginTop:4, paddingTop:8 }}>
+                <div style={{ fontSize:12, color:TEXT, lineHeight:1.6 }}>
+                  <strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every visible item and updates your pantry in one shot.
+                </div>
+              </div>
+              <div style={{ borderTop:"8px solid #2d1f5e", marginTop:10, paddingTop:8, textAlign:"center" }}>
+                <div style={{ fontSize:10, color:TEXT_MUTED, letterSpacing:"1.5px", fontWeight:700 }}>POWERED BY TINKERBOT STUDIOS</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
