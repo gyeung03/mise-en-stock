@@ -9,6 +9,10 @@ const CARD = "#fdf0e8";
 const DARK = "#3d2f6b";
 const ACCENT = "#6c5bb5";
 const FREEZE = "#3b82f6";
+const ORANGE = "#d97706";
+
+const PANTRY_CATS = ["Broths & Stocks","Canned Beans & Legumes","Canned Fish & Seafood","Canned Meats","Canned Other","Canned Tomatoes","Canned Vegetables","Condiments","Pickled Items","Dairy & Shelf-Stable Milk","Gravies & Meal Sauces","Pasta Sauces","Prepared Meals","Soups","Other"];
+const FREEZER_CATS = ["Proteins","Seafood","Vegetables","Meals & Leftovers","Bread & Dough","Fruit","Dairy","Soups & Broths","Other"];
 
 const CAT_COLORS = {
   "Broths & Stocks":"#06b6d4","Canned Beans & Legumes":"#10b981","Canned Fish & Seafood":"#3b82f6",
@@ -17,19 +21,9 @@ const CAT_COLORS = {
   "Dairy & Shelf-Stable Milk":"#ec4899","Gravies & Meal Sauces":"#d97706",
   "Pasta Sauces":"#e879f9","Prepared Meals":"#0ea5e9","Soups":"#6366f1",
   "Proteins":"#ef4444","Vegetables":"#22c55e","Meals & Leftovers":"#8b5cf6",
-  "Seafood":"#0ea5e9","Bread & Dough":"#f59e0b","Fruit":"#f43f5e","Other":"#94a3b8"
+  "Seafood":"#0ea5e9","Bread & Dough":"#f59e0b","Fruit":"#f43f5e",
+  "Dairy":"#ec4899","Soups & Broths":"#06b6d4","Other":"#94a3b8"
 };
-
-const HOW_TO = [
-  {label:"Adding Items", options:[
-    {icon:"➕", title:"Add tab", desc:"Toggle Pantry or Freezer, type the item name — category auto-suggested."},
-    {icon:"📷", title:"Scan tab", desc:"Choose Pantry or Freezer, then take a photo. Claude identifies everything automatically."},
-  ]},
-  {label:"Removing Items", options:[
-    {icon:"📸", title:"Scan tab", desc:"Switch to Remove mode, pick the location, then upload your photo."},
-    {icon:"🗑️", title:"Pantry / Freezer tab", desc:"Tap any item to expand, then hit the trash icon or use +/- to adjust quantity."},
-  ]},
-];
 
 function QBadge({q}) {
   const bg = q===0?"#ef4444":q===1?"#f97316":q===2?"#eab308":"#22c55e";
@@ -38,8 +32,8 @@ function QBadge({q}) {
 
 function formatEST(dateStr) {
   return new Date(dateStr).toLocaleString("en-US", {
-    timeZone:"America/New_York", month:"numeric", day:"numeric", year:"numeric",
-    hour:"numeric", minute:"2-digit", hour12:true
+    timeZone:"America/New_York",month:"numeric",day:"numeric",year:"numeric",
+    hour:"numeric",minute:"2-digit",hour12:true
   });
 }
 
@@ -50,12 +44,14 @@ async function sbFetch(path, opts={}) {
   return text ? JSON.parse(text) : null;
 }
 
-async function autoCategory(itemName, brand, existingCats) {
+async function autoCategory(itemName, brand, location, existingCats) {
+  const locationCats = location === "freezer" ? FREEZER_CATS : PANTRY_CATS;
+  const catList = [...new Set([...existingCats, ...locationCats])].join(", ");
   try {
     const res = await fetch("/api/scan", {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({
-        prompt:`Given this pantry item: "${itemName}" by "${brand}", pick the single best category from this list, or invent a short new one if nothing fits:\n${existingCats.join(", ")}\n\nReturn ONLY the category name, nothing else.`
+        prompt: `Given this ${location} item: "${itemName}" by "${brand}", pick the single best category from this list, or invent a short new one if nothing fits:\n${catList}\n\nReturn ONLY the category name, nothing else.`
       })
     });
     const data = await res.json();
@@ -63,26 +59,65 @@ async function autoCategory(itemName, brand, existingCats) {
   } catch(e) { return "Other"; }
 }
 
-function InventoryView({items, isFreezer, onUpdateQty, onDelete, expandedId, setExpandedId, collapsed, toggleCat}) {
+function EditableField({value, onSave, placeholder, suggestions=[], color}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value);
+  const [showList, setShowList] = useState(false);
+  const inputRef = useRef();
+
+  const commit = () => { setEditing(false); setShowList(false); if(val !== value) onSave(val); };
+
+  if(!editing) return (
+    <span onClick={()=>{ setVal(value); setEditing(true); setTimeout(()=>inputRef.current?.focus(),50); }}
+      style={{cursor:"pointer",borderBottom:`1px dashed ${color}`,color,fontWeight:600,fontSize:12,padding:"1px 2px"}}>
+      {value||<span style={{opacity:0.4}}>{placeholder}</span>}
+    </span>
+  );
+
+  return (
+    <div style={{position:"relative",display:"inline-block"}}>
+      <input ref={inputRef} value={val}
+        onChange={e=>{setVal(e.target.value);setShowList(true);}}
+        onBlur={()=>setTimeout(commit,150)}
+        onKeyDown={e=>e.key==="Enter"&&commit()}
+        style={{fontSize:12,fontWeight:600,padding:"2px 6px",border:`1px solid ${color}`,borderRadius:4,outline:"none",width:140,fontFamily:"inherit"}}
+      />
+      {showList&&suggestions.length>0&&(
+        <div style={{position:"absolute",top:"100%",left:0,background:"#fff",border:"1px solid #ddd",borderRadius:6,zIndex:30,maxHeight:140,overflowY:"auto",boxShadow:"0 4px 10px #0002",minWidth:160}}>
+          {suggestions.filter(s=>s.toLowerCase().includes(val.toLowerCase())).map(s=>(
+            <div key={s} onMouseDown={()=>{setVal(s);setShowList(false);setTimeout(()=>onSave(s),50);}}
+              style={{padding:"7px 10px",cursor:"pointer",fontSize:12,borderBottom:"1px solid #f5f5f5"}}
+              onMouseEnter={e=>e.target.style.background="#f5eeff"}
+              onMouseLeave={e=>e.target.style.background="#fff"}>
+              {s}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventoryView({items, isFreezer, onUpdateQty, onDelete, onEdit, expandedId, setExpandedId, collapsed, toggleCat}) {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("All");
 
-  const accentColor  = isFreezer ? FREEZE : ACCENT;
-  const btnColor     = isFreezer ? FREEZE : "#d97706";
-  const catHeaderBg  = isFreezer ? "#bfdbfe" : "#f5d9bf";
-  const rowBg        = isFreezer ? "#dbeafe" : CARD;
-  const expandedBg   = isFreezer ? "#eff6ff" : CARD;
-  const minusBtnBg   = isFreezer ? "#bfdbfe" : "#f5d9bf";
-  const divider      = isFreezer ? "#bfdbfe" : "#f0e0d0";
+  const accentColor = isFreezer ? FREEZE : ORANGE;
+  const catHeaderBg = isFreezer ? "#bfdbfe" : "#f5d9bf";
+  const rowBg       = isFreezer ? "#dbeafe" : CARD;
+  const expandedBg  = isFreezer ? "#eff6ff" : CARD;
+  const minusBtnBg  = isFreezer ? "#bfdbfe" : "#f5d9bf";
+  const divider     = isFreezer ? "#bfdbfe" : "#f0e0d0";
+  const catList     = isFreezer ? FREEZER_CATS : PANTRY_CATS;
 
   const inp = {width:"100%",padding:"10px 12px",border:"2px solid #b8aee0",borderRadius:8,fontSize:14,boxSizing:"border-box",background:"#fff",fontFamily:"inherit",outline:"none"};
-  const btnS = (bg, color) => ({padding:"10px 18px",background:bg,color:color||"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"});
+  const btnS = (bg,color)=>({padding:"10px 18px",background:bg,color:color||"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"});
 
   const cats = [...new Set(items.map(i=>i.category))].sort();
-  const filtered = items.filter(i => {
-    const s = search.toLowerCase();
-    return (!s || i.item.toLowerCase().includes(s) || i.brand.toLowerCase().includes(s))
-      && (filterCat==="All" || i.category===filterCat);
+  const filtered = items.filter(i=>{
+    const s=search.toLowerCase();
+    return (!s||i.item.toLowerCase().includes(s)||(i.brand||"").toLowerCase().includes(s))
+      &&(filterCat==="All"||i.category===filterCat);
   });
   const grouped = filtered.reduce((acc,i)=>{ (acc[i.category]=acc[i.category]||[]).push(i); return acc; },{});
 
@@ -95,8 +130,8 @@ function InventoryView({items, isFreezer, onUpdateQty, onDelete, expandedId, set
       </select>
     </div>
 
-    {Object.keys(grouped).sort().map(cat => {
-      const color = CAT_COLORS[cat] || "#94a3b8";
+    {Object.keys(grouped).sort().map(cat=>{
+      const color = CAT_COLORS[cat]||"#94a3b8";
       return (
         <div key={cat} style={{marginBottom:10,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px #0002",borderLeft:"4px solid "+color}}>
           <button onClick={()=>toggleCat(cat)} style={{width:"100%",background:catHeaderBg,border:"none",display:"flex",alignItems:"center",gap:8,padding:"11px 14px",cursor:"pointer",fontFamily:"inherit"}}>
@@ -105,7 +140,7 @@ function InventoryView({items, isFreezer, onUpdateQty, onDelete, expandedId, set
             <span style={{background:color,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:12,fontWeight:700}}>{grouped[cat].length}</span>
             <span style={{fontSize:11,color:"#6b7280",marginLeft:4}}>{collapsed[cat]?"▶":"▼"}</span>
           </button>
-          {!collapsed[cat] && grouped[cat].map((item, idx) => (
+          {!collapsed[cat]&&grouped[cat].map((item,idx)=>(
             <div key={item.id}>
               <div onClick={()=>setExpandedId(expandedId===item.id?null:item.id)}
                 style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:rowBg,borderBottom:idx<grouped[cat].length-1?`1px solid ${divider}`:"none"}}>
@@ -115,18 +150,31 @@ function InventoryView({items, isFreezer, onUpdateQty, onDelete, expandedId, set
               </div>
               {expandedId===item.id&&(
                 <div style={{background:expandedBg,padding:"10px 14px",borderBottom:idx<grouped[cat].length-1?`1px solid ${divider}`:"none"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:item.size||item.container?8:0}}>
-                    <button onClick={()=>onUpdateQty(item.id,-1)} style={{...btnS(minusBtnBg,btnColor),padding:"6px 14px",fontSize:16}}>-</button>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                    <button onClick={()=>onUpdateQty(item.id,-1)} style={{...btnS(minusBtnBg,accentColor),padding:"6px 14px",fontSize:16}}>-</button>
                     <span style={{fontWeight:700,fontSize:16,minWidth:24,textAlign:"center",color:DARK}}>{item.quantity}</span>
-                    <button onClick={()=>onUpdateQty(item.id,1)} style={{...btnS(btnColor),padding:"6px 14px",fontSize:16}}>+</button>
+                    <button onClick={()=>onUpdateQty(item.id,1)} style={{...btnS(accentColor),padding:"6px 14px",fontSize:16}}>+</button>
                     <button onClick={()=>onDelete(item.id)} style={{...btnS("#fee2e2","#ef4444"),marginLeft:"auto",padding:"6px 12px"}}>🗑 Remove</button>
                   </div>
-                  {(item.size||item.container)&&(
-                    <div style={{fontSize:12,color:"#6b7280",display:"flex",gap:12}}>
-                      {item.container&&<span>📦 {item.container}</span>}
-                      {item.size&&<span>⚖️ {item.size}</span>}
+                  <div style={{display:"flex",flexWrap:"wrap",gap:10,fontSize:12,color:"#6b7280"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span>🏷️</span>
+                      <EditableField value={item.brand||""} placeholder="add brand" onSave={v=>onEdit(item.id,"brand",v)} color={accentColor}/>
                     </div>
-                  )}
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span>⚖️</span>
+                      <EditableField value={item.size||""} placeholder="add size" onSave={v=>onEdit(item.id,"size",v)} color={accentColor}/>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span>📂</span>
+                      <EditableField value={item.category} placeholder="category" onSave={v=>onEdit(item.id,"category",v)} color={accentColor} suggestions={catList}/>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span>📦</span>
+                      <EditableField value={item.container||""} placeholder="container" onSave={v=>onEdit(item.id,"container",v)} color={accentColor} suggestions={["Can","Jar","Bottle","Box","Bag","Other"]}/>
+                    </div>
+                  </div>
+                  <div style={{fontSize:10,color:"#b0a8c8",marginTop:6}}>Tap any field above to edit</div>
                 </div>
               )}
             </div>
@@ -153,7 +201,6 @@ export default function App() {
   const [addForm, setAddForm] = useState({item:"",brand:"",size:"",category:"",container:"Can",quantity:1,location:"pantry"});
   const [catSuggestion, setCatSuggestion] = useState("");
   const [catLoading, setCatLoading] = useState(false);
-  const [showCatList, setShowCatList] = useState(false);
   const [scanImg, setScanImg] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState(null);
@@ -163,28 +210,28 @@ export default function App() {
   const fileRef = useRef();
   const catTimer = useRef();
 
-  const notify = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
+  const notify = (msg,type="ok")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
 
   const addLog = async (type, item, qty, brand="", category="") => {
-    const entry = {type, item, brand, qty, category};
-    setLog(p=>[{...entry, id:Date.now(), at:new Date().toISOString()},...p].slice(0,100));
-    try { await sbFetch("activity_log", {method:"POST", body:JSON.stringify(entry)}); }
-    catch(e) { console.error("Log write failed", e); }
+    const entry = {type,item,brand,qty,category};
+    setLog(p=>[{...entry,id:Date.now(),at:new Date().toISOString()},...p].slice(0,100));
+    try { await sbFetch("activity_log",{method:"POST",body:JSON.stringify(entry)}); }
+    catch(e) { console.error("Log write failed",e); }
   };
 
-  useEffect(() => {
+  useEffect(()=>{
     const thirtyDaysAgo = new Date(Date.now()-30*24*60*60*1000).toISOString();
     setLogLoading(true);
     sbFetch(`activity_log?select=*&at=gte.${thirtyDaysAgo}&order=at.desc&limit=100`)
       .then(data=>{ setLog(data||[]); setLogLoading(false); })
       .catch(()=>setLogLoading(false));
-  }, []);
+  },[]);
 
-  useEffect(() => {
+  useEffect(()=>{
     sbFetch("pantry_items?select=*&order=category.asc,item.asc")
       .then(data=>{ setItems(data||[]); setLoading(false); })
       .catch(e=>{ notify("Failed to load: "+e.message,"err"); setLoading(false); });
-  }, []);
+  },[]);
 
   const pantryItems = items.filter(i=>i.location==="pantry");
   const freezerItems = items.filter(i=>i.location==="freezer");
@@ -192,52 +239,65 @@ export default function App() {
   const totalQty = items.reduce((a,i)=>a+i.quantity,0);
   const lowStock = items.filter(i=>i.quantity<=1).length;
 
-  const toggleCat = c => setCollapsed(p=>({...p,[c]:!p[c]}));
+  const toggleCat = c=>setCollapsed(p=>({...p,[c]:!p[c]}));
 
   const handleItemNameChange = val => {
     setAddForm(p=>({...p,item:val}));
     clearTimeout(catTimer.current);
-    if(val.trim().length < 3) { setCatSuggestion(""); return; }
-    catTimer.current = setTimeout(async () => {
+    setCatSuggestion("");
+    setAddForm(p=>({...p,item:val,category:""}));
+    if(val.trim().length < 3) return;
+    catTimer.current = setTimeout(async()=>{
       setCatLoading(true);
-      const suggested = await autoCategory(val, addForm.brand, cats);
+      const suggested = await autoCategory(val, addForm.brand, addForm.location, cats);
       setCatSuggestion(suggested);
       setAddForm(p=>({...p,category:suggested}));
       setCatLoading(false);
     }, 800);
   };
 
-  const updateQty = async (id, d) => {
-    const it = items.find(i=>i.id===id); if(!it) return;
-    const newQ = Math.max(0, it.quantity+d);
+  const updateQty = async (id,d)=>{
+    const it=items.find(i=>i.id===id); if(!it) return;
+    const newQ=Math.max(0,it.quantity+d);
     setItems(p=>p.map(i=>i.id===id?{...i,quantity:newQ}:i));
     try {
-      await sbFetch(`pantry_items?id=eq.${id}`, {method:"PATCH", body:JSON.stringify({quantity:newQ})});
-      addLog(d>0?"added":"removed", it.item, Math.abs(d), it.brand, it.category);
+      await sbFetch(`pantry_items?id=eq.${id}`,{method:"PATCH",body:JSON.stringify({quantity:newQ})});
+      addLog(d>0?"added":"removed",it.item,Math.abs(d),it.brand,it.category);
     } catch(e) {
       setItems(p=>p.map(i=>i.id===id?{...i,quantity:it.quantity}:i));
       notify("Update failed","err");
     }
   };
 
-  const deleteItem = async id => {
-    const it = items.find(i=>i.id===id);
+  const deleteItem = async id=>{
+    const it=items.find(i=>i.id===id);
     setItems(p=>p.filter(i=>i.id!==id)); setExpandedId(null);
     try {
-      await sbFetch(`pantry_items?id=eq.${id}`, {method:"DELETE", headers:{"Prefer":"return=minimal"}});
-      if(it) addLog("removed", it.item, it.quantity, it.brand, it.category);
+      await sbFetch(`pantry_items?id=eq.${id}`,{method:"DELETE",headers:{"Prefer":"return=minimal"}});
+      if(it) addLog("removed",it.item,it.quantity,it.brand,it.category);
       notify("Removed","err");
     } catch(e) { setItems(p=>[...p,it]); notify("Delete failed","err"); }
   };
 
-  const addItem = async () => {
+  const editItem = async (id,field,val)=>{
+    const it=items.find(i=>i.id===id); if(!it) return;
+    setItems(p=>p.map(i=>i.id===id?{...i,[field]:val}:i));
+    try {
+      await sbFetch(`pantry_items?id=eq.${id}`,{method:"PATCH",body:JSON.stringify({[field]:val})});
+    } catch(e) {
+      setItems(p=>p.map(i=>i.id===id?{...i,[field]:it[field]}:i));
+      notify("Edit failed","err");
+    }
+  };
+
+  const addItem = async ()=>{
     if(!addForm.item.trim()) return;
     const cat = addForm.category || catSuggestion || "Other";
-    const newItem = {...addForm, category:cat, quantity:Number(addForm.quantity)};
+    const newItem = {...addForm,category:cat,quantity:Number(addForm.quantity)};
     try {
-      const [created] = await sbFetch("pantry_items", {method:"POST", body:JSON.stringify(newItem)});
+      const [created] = await sbFetch("pantry_items",{method:"POST",body:JSON.stringify(newItem)});
       setItems(p=>[...p,created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
-      addLog("added", newItem.item, newItem.quantity, newItem.brand, newItem.category);
+      addLog("added",newItem.item,newItem.quantity,newItem.brand,newItem.category);
       setAddForm(p=>({...p,item:"",brand:"",size:"",category:"",quantity:1}));
       setCatSuggestion("");
       notify("Item added!");
@@ -245,54 +305,54 @@ export default function App() {
     } catch(e) { notify("Add failed: "+e.message,"err"); }
   };
 
-  const handleScan = e => {
-    const file = e.target.files[0]; if(!file) return;
-    e.target.value = "";
+  const handleScan = e=>{
+    const file=e.target.files[0]; if(!file) return;
+    e.target.value="";
     setScanImg(null); setScanLoading(true); setScanResult(null);
-    const img = new Image();
-    img.onload = async () => {
-      const MAX = 1024;
-      const scale = Math.min(1, MAX/Math.max(img.width,img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width*scale; canvas.height = img.height*scale;
+    const img=new Image();
+    img.onload=async()=>{
+      const MAX=1024;
+      const scale=Math.min(1,MAX/Math.max(img.width,img.height));
+      const canvas=document.createElement("canvas");
+      canvas.width=img.width*scale; canvas.height=img.height*scale;
       canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg",0.8);
+      const dataUrl=canvas.toDataURL("image/jpeg",0.8);
       setScanImg(dataUrl);
+      const locCats = scanLoc==="freezer" ? FREEZER_CATS.join(", ") : PANTRY_CATS.join(", ");
       try {
-        const res = await fetch("/api/scan", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({
-            image: dataUrl.split(",")[1],
-            mimeType: "image/jpeg",
-            prompt: `Identify all ${scanLoc} items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${cats.join(", ")}.\n\nFor the size field: only include the size if it is fully and clearly visible on the packaging. If the size text is partially hidden, obscured, cut off, or you are not 100% certain of the full value, leave size as an empty string — do not guess.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","size":"fully visible size with unit e.g. 14.5 oz, 400g, or empty string if unclear","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
+        const res=await fetch("/api/scan",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            image:dataUrl.split(",")[1],
+            mimeType:"image/jpeg",
+            prompt:`Identify all items in this image. These are ${scanLoc} items. For each, pick the best category from this list or invent a short new one if nothing fits: ${locCats}.\n\nFor the size field: only include the size if it is fully and clearly visible on the packaging. If the size text is partially hidden, obscured, cut off, or you are not 100% certain of the full value, leave size as an empty string — do not guess.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","size":"fully visible size with unit e.g. 14.5 oz, 400g, or empty string if unclear","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
           })
         });
-        const data = await res.json();
-        const txt = data.result.replace(/```json|```/g,"").trim();
+        const data=await res.json();
+        const txt=data.result.replace(/```json|```/g,"").trim();
         setScanResult(JSON.parse(txt));
       } catch(err) { setScanResult({error:true}); }
       setScanLoading(false);
     };
-    img.onerror = () => { setScanResult({error:true}); setScanLoading(false); };
-    img.src = URL.createObjectURL(file);
+    img.onerror=()=>{ setScanResult({error:true}); setScanLoading(false); };
+    img.src=URL.createObjectURL(file);
   };
 
-  const applyScan = async scanned => {
+  const applyScan = async scanned=>{
     if(scanMode==="add"){
       try {
-        const created = await sbFetch("pantry_items", {
+        const created=await sbFetch("pantry_items",{
           method:"POST",
-          body: JSON.stringify(scanned.map(s=>({...s, quantity:s.quantity||1, size:s.size||"", location:scanLoc})))
+          body:JSON.stringify(scanned.map(s=>({...s,quantity:s.quantity||1,size:s.size||"",location:scanLoc})))
         });
         setItems(p=>[...p,...created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
-        scanned.forEach(s=>addLog("added", s.item, s.quantity||1, s.brand||"", s.category||""));
+        scanned.forEach(s=>addLog("added",s.item,s.quantity||1,s.brand||"",s.category||""));
         notify("Added "+scanned.length+" item(s)!");
       } catch(e) { notify("Scan add failed","err"); }
     } else {
       let upd=[...items], removed=0;
-      const pool = scanLoc==="freezer" ? upd.filter(i=>i.location==="freezer") : upd.filter(i=>i.location==="pantry");
       for(const s of scanned){
-        const idx=upd.findIndex(i=>pool.includes(i)&&(i.item.toLowerCase().includes(s.item.toLowerCase())||s.item.toLowerCase().includes(i.item.toLowerCase())));
+        const idx=upd.findIndex(i=>i.location===scanLoc&&(i.item.toLowerCase().includes(s.item.toLowerCase())||s.item.toLowerCase().includes(i.item.toLowerCase())));
         if(idx!==-1){
           const nq=upd[idx].quantity-(s.quantity||1);
           try {
@@ -315,15 +375,11 @@ export default function App() {
     setTab(scanLoc==="freezer"?"freezer":"pantry");
   };
 
-  const formattedDate = new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
-  const inp = {width:"100%",padding:"10px 12px",border:"2px solid #b8aee0",borderRadius:8,fontSize:14,boxSizing:"border-box",background:"#fff",fontFamily:"inherit",outline:"none"};
-  const btn = (bg,color)=>({padding:"10px 18px",background:bg,color:color||"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"});
-  const W = {maxWidth:680,margin:"0 auto"};
-
-  const TABS = [
-    ["pantry","🥫 Pantry"],["freezer","❄️ Freezer"],["add","➕ Add"],
-    ["scan","📸 Scan"],["log","📋 Log"],["info","❓ How to Use"],
-  ];
+  const formattedDate=new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+  const inp={width:"100%",padding:"10px 12px",border:"2px solid #b8aee0",borderRadius:8,fontSize:14,boxSizing:"border-box",background:"#fff",fontFamily:"inherit",outline:"none"};
+  const btn=(bg,color)=>({padding:"10px 18px",background:bg,color:color||"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"});
+  const W={maxWidth:680,margin:"0 auto"};
+  const TABS=[["pantry","🥫 Pantry"],["freezer","❄️ Freezer"],["add","➕ Add"],["scan","📸 Scan"],["log","📋 Log"],["info","❓ How to Use"]];
 
   return (
     <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:BG,color:DARK}}>
@@ -354,8 +410,8 @@ export default function App() {
       <div style={{background:CARD,borderBottom:"2px solid #b8aee044"}}>
         <div style={{...W,display:"flex",padding:"0 8px",overflowX:"auto"}}>
           {TABS.map(([t,l])=>{
-            const isActive = tab===t;
-            const activeColor = t==="freezer"?FREEZE:ACCENT;
+            const isActive=tab===t;
+            const activeColor=t==="freezer"?FREEZE:ACCENT;
             return <button key={t} onClick={()=>setTab(t)} style={{padding:"12px 12px",border:"none",background:"none",fontWeight:700,fontSize:12,cursor:"pointer",color:isActive?activeColor:"#a09abb",borderBottom:isActive?"3px solid "+activeColor:"3px solid transparent",transition:"all .15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>{l}</button>;
           })}
         </div>
@@ -368,12 +424,12 @@ export default function App() {
         {loading&&<div style={{textAlign:"center",padding:40,color:CARD,fontWeight:700,fontSize:16}}>Loading...</div>}
 
         {!loading&&tab==="pantry"&&<InventoryView isFreezer={false} items={pantryItems}
-          onUpdateQty={updateQty} onDelete={deleteItem}
+          onUpdateQty={updateQty} onDelete={deleteItem} onEdit={editItem}
           expandedId={expandedId} setExpandedId={setExpandedId}
           collapsed={collapsed} toggleCat={toggleCat}/>}
 
         {!loading&&tab==="freezer"&&<InventoryView isFreezer={true} items={freezerItems}
-          onUpdateQty={updateQty} onDelete={deleteItem}
+          onUpdateQty={updateQty} onDelete={deleteItem} onEdit={editItem}
           expandedId={expandedId} setExpandedId={setExpandedId}
           collapsed={collapsed} toggleCat={toggleCat}/>}
 
@@ -384,8 +440,8 @@ export default function App() {
           <div style={{marginBottom:16}}>
             <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:6}}>Location</label>
             <div style={{display:"flex",borderRadius:10,overflow:"hidden",border:"2px solid #b8aee0"}}>
-              <button onClick={()=>setAddForm(p=>({...p,location:"pantry"}))} style={{flex:1,padding:"10px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:addForm.location==="pantry"?ACCENT:"#fff",color:addForm.location==="pantry"?"#fff":ACCENT,transition:"all .15s"}}>🥫 Pantry</button>
-              <button onClick={()=>setAddForm(p=>({...p,location:"freezer"}))} style={{flex:1,padding:"10px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:addForm.location==="freezer"?FREEZE:"#fff",color:addForm.location==="freezer"?"#fff":FREEZE,transition:"all .15s"}}>❄️ Freezer</button>
+              <button onClick={()=>setAddForm(p=>({...p,location:"pantry",category:""}))} style={{flex:1,padding:"10px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:addForm.location==="pantry"?ORANGE:"#fff",color:addForm.location==="pantry"?"#fff":ORANGE,transition:"all .15s"}}>🥫 Pantry</button>
+              <button onClick={()=>setAddForm(p=>({...p,location:"freezer",category:""}))} style={{flex:1,padding:"10px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:addForm.location==="freezer"?FREEZE:"#fff",color:addForm.location==="freezer"?"#fff":FREEZE,transition:"all .15s"}}>❄️ Freezer</button>
             </div>
           </div>
 
@@ -401,29 +457,13 @@ export default function App() {
 
           <div style={{marginBottom:12}}>
             <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>
-              Category {catLoading&&<span style={{fontSize:11,color:ACCENT,fontWeight:400}}>✨ suggesting...</span>}
+              Category {catLoading&&<span style={{fontSize:11,color:ACCENT,fontWeight:400}}>✨ detecting...</span>}
             </label>
-            <div style={{position:"relative"}}>
-              <input
-                value={addForm.category}
-                onChange={e=>setAddForm(p=>({...p,category:e.target.value}))}
-                onFocus={()=>setShowCatList(true)}
-                onBlur={()=>setTimeout(()=>setShowCatList(false),150)}
-                placeholder={catLoading?"Detecting category...":"Auto-detected or type your own"}
-                style={{...inp,background:catSuggestion&&!catLoading?"#f0fdf4":inp.background}}
-              />
-              {showCatList&&cats.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"2px solid #b8aee0",borderRadius:8,zIndex:20,maxHeight:180,overflowY:"auto",boxShadow:"0 4px 12px #0002"}}>
-                {cats.filter(c=>c.toLowerCase().includes(addForm.category.toLowerCase())||!addForm.category).map(c=>(
-                  <div key={c} onClick={()=>{setAddForm(p=>({...p,category:c}));setShowCatList(false);}}
-                    style={{padding:"9px 12px",cursor:"pointer",fontSize:13,borderBottom:"1px solid #f0e8f8"}}
-                    onMouseEnter={e=>e.target.style.background="#f5eeff"}
-                    onMouseLeave={e=>e.target.style.background="transparent"}>
-                    {c}
-                  </div>
-                ))}
-              </div>}
+            <div style={{...inp,background:"#f5f3ff",color:addForm.category?DARK:"#b0a8c8",fontStyle:addForm.category?"normal":"italic",display:"flex",alignItems:"center",gap:8}}>
+              {addForm.category
+                ? <><span style={{fontSize:14}}>✨</span><span>{addForm.category}</span></>
+                : <span>Auto-detected when you type item name...</span>}
             </div>
-            {catSuggestion&&!catLoading&&<div style={{fontSize:11,color:"#22c55e",marginTop:4}}>✨ Auto-suggested: {catSuggestion}</div>}
           </div>
 
           <div style={{marginBottom:12}}>
@@ -443,7 +483,8 @@ export default function App() {
               <input type="number" min="1" value={addForm.quantity} onChange={e=>setAddForm(p=>({...p,quantity:e.target.value}))} style={inp}/>
             </div>
           </div>
-          <button onClick={addItem} style={{...btn(addForm.location==="freezer"?FREEZE:ACCENT),width:"100%",padding:13,fontSize:14}}>
+
+          <button onClick={addItem} style={{...btn(addForm.location==="freezer"?FREEZE:ORANGE),width:"100%",padding:13,fontSize:14}}>
             {addForm.location==="freezer"?"❄️ Add to Freezer":"🥫 Add to Pantry"}
           </button>
         </div>}
@@ -453,11 +494,11 @@ export default function App() {
           <div style={{fontWeight:800,fontSize:17,marginBottom:4,color:DARK}}>📷 Scan Items</div>
           <div style={{fontSize:13,color:"#a09abb",marginBottom:16}}>Photo your items — Claude will identify and categorize everything automatically.</div>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button onClick={()=>setScanMode("add")} style={{flex:1,padding:"10px 0",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="add"?ACCENT:"transparent",color:scanMode==="add"?"#fff":ACCENT,outline:"2px solid "+ACCENT}}>+ Add items</button>
-            <button onClick={()=>setScanMode("remove")} style={{flex:1,padding:"10px 0",border:"2px solid "+ACCENT,borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="remove"?ACCENT:"transparent",color:scanMode==="remove"?"#fff":ACCENT}}>- Remove items</button>
+            <button onClick={()=>setScanMode("add")} style={{flex:1,padding:"10px 0",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="add"?ORANGE:"transparent",color:scanMode==="add"?"#fff":ORANGE,outline:"2px solid "+ORANGE}}>+ Add items</button>
+            <button onClick={()=>setScanMode("remove")} style={{flex:1,padding:"10px 0",border:"2px solid "+ORANGE,borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="remove"?ORANGE:"transparent",color:scanMode==="remove"?"#fff":ORANGE}}>- Remove items</button>
           </div>
           <div style={{display:"flex",borderRadius:10,overflow:"hidden",border:"2px solid #b8aee0",marginBottom:16}}>
-            <button onClick={()=>setScanLoc("pantry")} style={{flex:1,padding:"9px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:scanLoc==="pantry"?ACCENT:"#fff",color:scanLoc==="pantry"?"#fff":ACCENT,transition:"all .15s"}}>🥫 Pantry</button>
+            <button onClick={()=>setScanLoc("pantry")} style={{flex:1,padding:"9px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:scanLoc==="pantry"?ORANGE:"#fff",color:scanLoc==="pantry"?"#fff":ORANGE,transition:"all .15s"}}>🥫 Pantry</button>
             <button onClick={()=>setScanLoc("freezer")} style={{flex:1,padding:"9px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:scanLoc==="freezer"?FREEZE:"#fff",color:scanLoc==="freezer"?"#fff":FREEZE,transition:"all .15s"}}>❄️ Freezer</button>
           </div>
           <input ref={fileRef} type="file" accept="image/*" onChange={handleScan} style={{display:"none"}}/>
@@ -482,7 +523,7 @@ export default function App() {
               </div>
             ))}
             <div style={{display:"flex",gap:8,marginTop:14}}>
-              <button onClick={()=>applyScan(scanResult)} style={{...btn(ACCENT),flex:1,padding:11}}>{scanMode==="add"?"Add All":"Remove All"}</button>
+              <button onClick={()=>applyScan(scanResult)} style={{...btn(scanLoc==="freezer"?FREEZE:ORANGE),flex:1,padding:11}}>{scanMode==="add"?"Add All":"Remove All"}</button>
               <button onClick={()=>{setScanResult(null);setScanImg(null);}} style={{...btn("#f0e8f8",ACCENT),padding:"11px 14px"}}>Cancel</button>
             </div>
           </div>}
@@ -493,24 +534,24 @@ export default function App() {
         {!loading&&tab==="log"&&<div>
           <div style={{fontWeight:800,fontSize:16,color:CARD,marginBottom:14}}>Activity — last 30 days</div>
           {logLoading
-            ? <div style={{textAlign:"center",padding:40,color:CARD,fontWeight:700}}>Loading log...</div>
-            : log.length===0
-              ? <div style={{background:CARD,borderRadius:14,padding:32,textAlign:"center",color:"#a09abb",fontSize:14}}>No activity yet.</div>
-              : <div style={{background:CARD,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px #0002"}}>
-                  {log.map((e,idx)=>(
-                    <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:idx<log.length-1?"1px solid #f0e8f8":"none"}}>
-                      <span style={{fontSize:18}}>{e.type==="added"?"➕":"➖"}</span>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:600,fontSize:14,color:DARK}}>{e.item}</div>
-                        <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>
-                          {e.type==="added"?"Added":"Removed"} {e.qty} &bull; {formatEST(e.at)}
-                          {e.category&&<span> &bull; {e.category}</span>}
-                        </div>
+            ?<div style={{textAlign:"center",padding:40,color:CARD,fontWeight:700}}>Loading log...</div>
+            :log.length===0
+              ?<div style={{background:CARD,borderRadius:14,padding:32,textAlign:"center",color:"#a09abb",fontSize:14}}>No activity yet.</div>
+              :<div style={{background:CARD,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px #0002"}}>
+                {log.map((e,idx)=>(
+                  <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:idx<log.length-1?"1px solid #f0e8f8":"none"}}>
+                    <span style={{fontSize:18}}>{e.type==="added"?"➕":"➖"}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:14,color:DARK}}>{e.item}</div>
+                      <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>
+                        {e.type==="added"?"Added":"Removed"} {e.qty} &bull; {formatEST(e.at)}
+                        {e.category&&<span> &bull; {e.category}</span>}
                       </div>
-                      <span style={{fontSize:11,fontWeight:700,color:e.type==="added"?"#22c55e":"#ef4444",background:e.type==="added"?"#f0fdf4":"#fff5f5",borderRadius:6,padding:"3px 8px"}}>{e.type==="added"?"+":"-"}{e.qty}</span>
                     </div>
-                  ))}
-                </div>
+                    <span style={{fontSize:11,fontWeight:700,color:e.type==="added"?"#22c55e":"#ef4444",background:e.type==="added"?"#f0fdf4":"#fff5f5",borderRadius:6,padding:"3px 8px"}}>{e.type==="added"?"+":"-"}{e.qty}</span>
+                  </div>
+                ))}
+              </div>
           }
         </div>}
 
@@ -525,7 +566,15 @@ export default function App() {
             <span style={{fontWeight:900,fontSize:20}}>Items identified</span>
             <span style={{fontWeight:900,fontSize:26}}>∞</span>
           </div>
-          {HOW_TO.map(({label,options})=>(
+          {[{label:"Adding Items",options:[
+            {icon:"➕",title:"Add tab",desc:"Toggle Pantry or Freezer, type the item name — category auto-suggested."},
+            {icon:"📷",title:"Scan tab",desc:"Choose Pantry or Freezer, then take a photo. Claude identifies everything automatically."},
+          ]},{label:"Removing Items",options:[
+            {icon:"📸",title:"Scan tab",desc:"Switch to Remove mode, pick the location, then upload your photo."},
+            {icon:"🗑️",title:"Pantry / Freezer tab",desc:"Tap any item to expand, then hit the trash icon or use +/- to adjust quantity."},
+          ]},{label:"Editing Items",options:[
+            {icon:"✏️",title:"Pantry / Freezer tab",desc:"Tap any item to expand it, then tap any field (brand, size, category, container) to edit it in place."},
+          ]}].map(({label,options})=>(
             <div key={label} style={{marginBottom:14}}>
               <div style={{fontWeight:900,fontSize:13,letterSpacing:"0.5px",marginBottom:8,borderBottom:"1px solid #111",paddingBottom:4}}>{label}</div>
               {options.map((o,i)=>(
