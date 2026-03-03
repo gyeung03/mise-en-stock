@@ -380,15 +380,10 @@ export default function App() {
             <button onClick={()=>setScanMode("remove")} style={{flex:1,padding:"10px 0",border:"2px solid "+ACCENT,borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="remove"?ACCENT:"transparent",color:scanMode==="remove"?"#fff":ACCENT}}>- Remove items</button>
           </div>
           <input ref={fileRef} type="file" accept="image/*" onChange={handleScan} style={{display:"none"}}/>
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
           {!scanImg&&!scanLoading&&!scanResult&&<div style={{display:"flex",gap:12}}>
-            <button onClick={()=>cameraRef.current.click()} style={{flex:1,padding:"22px 0",background:"#ede8f8",border:"2px dashed #b8aee0",borderRadius:12,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <span style={{fontSize:28}}>📷</span>
-              <span style={{fontWeight:700,fontSize:14,color:DARK}}>Take Photo</span>
-            </button>
             <button onClick={()=>fileRef.current.click()} style={{flex:1,padding:"22px 0",background:"#ede8f8",border:"2px dashed #b8aee0",borderRadius:12,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <span style={{fontSize:28}}>🖼️</span>
-              <span style={{fontWeight:700,fontSize:14,color:DARK}}>Choose Photo</span>
+              <span style={{fontSize:28}}>📷</span>
+              <span style={{fontWeight:700,fontSize:14,color:DARK}}>Take or Choose Photo</span>
             </button>
           </div>}
           {scanImg&&<img src={scanImg} alt="" style={{width:"100%",borderRadius:10,marginBottom:12,maxHeight:200,objectFit:"cover"}}/>}
