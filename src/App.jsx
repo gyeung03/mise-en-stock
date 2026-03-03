@@ -264,7 +264,7 @@ export default function App() {
           body: JSON.stringify({
             image: dataUrl.split(",")[1],
             mimeType: "image/jpeg",
-            prompt: `Identify all ${scanLoc} items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${cats.join(", ")}.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","size":"size with unit e.g. 14.5 oz, 400g, or empty string if not visible","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
+            prompt: `Identify all ${scanLoc} items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${cats.join(", ")}.\n\nFor the size field: only include the size if it is fully and clearly visible on the packaging. If the size text is partially hidden, obscured, cut off, or you are not 100% certain of the full value, leave size as an empty string — do not guess.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","size":"fully visible size with unit e.g. 14.5 oz, 400g, or empty string if unclear","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
           })
         });
         const data = await res.json();
