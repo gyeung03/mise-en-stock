@@ -494,8 +494,10 @@ export default function App() {
           <div style={{fontWeight:800,fontSize:17,marginBottom:4,color:DARK}}>📷 Scan Items</div>
           <div style={{fontSize:13,color:"#a09abb",marginBottom:16}}>Photo your items — Claude will identify and categorize everything automatically.</div>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <button onClick={()=>setScanMode("add")} style={{flex:1,padding:"10px 0",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="add"?ORANGE:"transparent",color:scanMode==="add"?"#fff":ORANGE,outline:"2px solid "+ORANGE}}>+ Add items</button>
-            <button onClick={()=>setScanMode("remove")} style={{flex:1,padding:"10px 0",border:"2px solid "+ORANGE,borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="remove"?ORANGE:"transparent",color:scanMode==="remove"?"#fff":ORANGE}}>- Remove items</button>
+            {(()=>{ const c=scanLoc==="freezer"?FREEZE:ORANGE; return <>
+              <button onClick={()=>setScanMode("add")} style={{flex:1,padding:"10px 0",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="add"?c:"transparent",color:scanMode==="add"?"#fff":c,outline:"2px solid "+c}}>+ Add items</button>
+              <button onClick={()=>setScanMode("remove")} style={{flex:1,padding:"10px 0",border:"2px solid "+c,borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="remove"?c:"transparent",color:scanMode==="remove"?"#fff":c}}>- Remove items</button>
+            </>; })()}
           </div>
           <div style={{display:"flex",borderRadius:10,overflow:"hidden",border:"2px solid #b8aee0",marginBottom:16}}>
             <button onClick={()=>setScanLoc("pantry")} style={{flex:1,padding:"9px 0",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",background:scanLoc==="pantry"?ORANGE:"#fff",color:scanLoc==="pantry"?"#fff":ORANGE,transition:"all .15s"}}>🥫 Pantry</button>
