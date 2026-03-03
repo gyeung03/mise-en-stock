@@ -1,8 +1,6 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
   const { image, mimeType } = req.body;
-
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -29,13 +27,14 @@ export default async function handler(req, res) {
         }]
       })
     });
-
     const data = await response.json();
+    // Log the full response so we can see what's coming back
+    console.log("Anthropic response:", JSON.stringify(data));
     const txt = data.content.map(c => c.text || "").join("").replace(/```json|```/g, "").trim();
     const items = JSON.parse(txt);
     res.status(200).json({ items });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to identify items" });
+    console.error("Scan error:", err);
+    res.status(500).json({ error: "Failed to identify items", detail: err.message });
   }
 }
