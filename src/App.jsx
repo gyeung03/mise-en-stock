@@ -5,6 +5,26 @@ const SUPABASE_URL = "https://wzcnkfczkfjmphjzaeea.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6Y25rZmN6a2ZqbXBoanphZWVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0ODE5NDksImV4cCI6MjA4ODA1Nzk0OX0.mkXO4wnFk0l3-j3CIaCL3qoYt7oKvEmCEtm98ABWCvI";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Auto-categorize routes through /api/claude (serverless, keeps API key secret)
+const callClaude = async (body) => {
+  const res = await fetch("/api/claude", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
+
+// Scan routes through the existing /api/scan serverless function
+const callScan = async (image, mimeType) => {
+  const res = await fetch("/api/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image, mimeType }),
+  });
+  return res.json();
+};
+
 const CATEGORIES = [
   "Broths & Stocks","Canned Beans & Legumes","Canned Beans & Legumes (Sweet)",
   "Canned Eggs & Specialty","Canned Fish & Seafood","Canned Meats","Canned Shellfish",
@@ -13,8 +33,6 @@ const CATEGORIES = [
   "Gravies & Meal Sauces","Prepared Meals","Sauces & Cooking Bases","Soups","Other"
 ];
 
-// Seed data from spreadsheet (last updated 2026-02-27)
-// Only inserted if Supabase table is empty on first load
 const SEED_ITEMS = [
   { category:"Broths & Stocks",                   item:"Beef Broth",                                       brand:"College Inn",                     container:"Can",    quantity:1 },
   { category:"Canned Beans & Legumes",            item:"Garbanzo Beans",                                   brand:"Trader Joe's",                    container:"Can",    quantity:1 },
@@ -112,6 +130,13 @@ export default function App() {
   const [notification, setNotification] = useState(null);
   const [collapsedCats, setCollapsedCats] = useState({});
   const [categorizing, setCategorizing] = useState(false);
+  const [scanImg, setScanImg] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
+  const [scanMode, setScanMode] = useState("add");
+
+  const cameraRef = useRef();
+  const uploadRef = useRef();
 
   const notify = (msg, type="success") => {
     setNotification({ msg, type });
@@ -122,21 +147,10 @@ export default function App() {
 
   const fetchItems = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("pantry_items")
-      .select("*")
-      .order("category");
-    if (error) {
-      notify("Failed to load items", "error");
-      setLoading(false);
-      return;
-    }
-    // Seed if empty
+    const { data, error } = await supabase.from("pantry_items").select("*").order("category");
+    if (error) { notify("Failed to load items", "error"); setLoading(false); return; }
     if (data.length === 0) {
-      const { data: seeded, error: seedErr } = await supabase
-        .from("pantry_items")
-        .insert(SEED_ITEMS)
-        .select();
+      const { data: seeded, error: seedErr } = await supabase.from("pantry_items").insert(SEED_ITEMS).select();
       if (!seedErr) setItems(seeded);
       else notify("Failed to seed pantry", "error");
     } else {
@@ -148,10 +162,7 @@ export default function App() {
   const updateQty = async (id, delta) => {
     const item = items.find(i => i.id === id);
     const newQty = Math.max(0, item.quantity + delta);
-    const { error } = await supabase
-      .from("pantry_items")
-      .update({ quantity: newQty })
-      .eq("id", id);
+    const { error } = await supabase.from("pantry_items").update({ quantity: newQty }).eq("id", id);
     if (!error) setItems(p => p.map(i => i.id === id ? { ...i, quantity: newQty } : i));
   };
 
@@ -164,16 +175,10 @@ export default function App() {
     if (!itemName.trim()) return;
     setCategorizing(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 50,
-          messages: [{ role: "user", content: `Which single category best fits "${itemName}"? Choose exactly one from this list and reply with ONLY that category name, nothing else: ${CATEGORIES.join(", ")}` }]
-        })
+      const data = await callClaude({
+        model: "claude-sonnet-4-20250514", max_tokens: 50,
+        messages: [{ role:"user", content:`Which single category best fits "${itemName}"? Choose exactly one from this list and reply with ONLY that category name, nothing else: ${CATEGORIES.join(", ")}` }]
       });
-      const data = await res.json();
       const cat = data.content.map(c => c.text || "").join("").trim();
       if (CATEGORIES.includes(cat)) setAddForm(f => ({ ...f, category: cat }));
     } catch {}
@@ -183,10 +188,7 @@ export default function App() {
   const addItem = async () => {
     if (!addForm.item.trim()) return;
     if (!addForm.category) { notify("Still detecting category, please wait…", "error"); return; }
-    const { data, error } = await supabase
-      .from("pantry_items")
-      .insert([{ ...addForm, quantity: Number(addForm.quantity) }])
-      .select();
+    const { data, error } = await supabase.from("pantry_items").insert([{ ...addForm, quantity: Number(addForm.quantity) }]).select();
     if (!error) {
       setItems(p => [...p, data[0]]);
       setAddForm({ item:"", brand:"", category:"", container:"Can", quantity:1 });
@@ -195,38 +197,75 @@ export default function App() {
     }
   };
 
+  const handleScanFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const b64 = e.target.result.split(",")[1];
+      const mime = file.type || "image/jpeg";
+      setScanImg(e.target.result);
+      setScanLoading(true);
+      setScanResult(null);
+      try {
+        const data = await callScan(b64, mime);
+        if (data.items) setScanResult(data.items);
+        else setScanResult({ error: true });
+      } catch { setScanResult({ error: true }); }
+      setScanLoading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyScan = async (scanned) => {
+    if (scanMode === "add") {
+      const { data, error } = await supabase.from("pantry_items")
+        .insert(scanned.map(s => ({ item:s.item, brand:s.brand||"", category:s.category, container:s.container||"Can", quantity:s.quantity||1 })))
+        .select();
+      if (!error) { setItems(p => [...p, ...data]); notify(`Added ${data.length} item(s)!`); }
+      else notify("Failed to save items", "error");
+    } else {
+      let removed = 0;
+      for (const s of scanned) {
+        const match = items.find(i => i.item.toLowerCase().includes(s.item.toLowerCase()) || s.item.toLowerCase().includes(i.item.toLowerCase()));
+        if (match) {
+          const newQty = match.quantity - (s.quantity || 1);
+          if (newQty <= 0) {
+            await supabase.from("pantry_items").delete().eq("id", match.id);
+            setItems(p => p.filter(i => i.id !== match.id));
+          } else {
+            await supabase.from("pantry_items").update({ quantity: newQty }).eq("id", match.id);
+            setItems(p => p.map(i => i.id === match.id ? { ...i, quantity: newQty } : i));
+          }
+          removed++;
+        }
+      }
+      notify(`Removed ${removed} item(s)`);
+    }
+    setScanResult(null);
+    setScanImg(null);
+    setTab("inventory");
+  };
+
   const allCats = ["All", ...Array.from(new Set(items.map(i => i.category))).sort()];
   const totalQty = items.reduce((a, i) => a + i.quantity, 0);
   const lowStock = items.filter(i => i.quantity <= 1).length;
-
   const filtered = items.filter(i => {
     const s = search.toLowerCase();
-    return (!s || i.item.toLowerCase().includes(s) || (i.brand || "").toLowerCase().includes(s))
+    return (!s || i.item.toLowerCase().includes(s) || (i.brand||"").toLowerCase().includes(s))
       && (filterCat === "All" || i.category === filterCat);
   });
-
-  const grouped = filtered.reduce((acc, i) => {
-    (acc[i.category] = acc[i.category] || []).push(i);
-    return acc;
-  }, {});
-
+  const grouped = filtered.reduce((acc, i) => { (acc[i.category] = acc[i.category] || []).push(i); return acc; }, {});
   const toggleCat = cat => setCollapsedCats(p => ({ ...p, [cat]: !p[cat] }));
 
-  const inputStyle = {
-    width:"100%", padding:"10px 14px", background:CARD,
-    border:`1px solid ${CARD_BORDER}`, borderRadius:8, fontSize:13,
-    color:TEXT, outline:"none", boxSizing:"border-box",
-  };
+  const inputStyle = { width:"100%", padding:"10px 14px", background:CARD, border:`1px solid ${CARD_BORDER}`, borderRadius:8, fontSize:13, color:TEXT, outline:"none", boxSizing:"border-box" };
   const btnBase = { border:"none", cursor:"pointer", fontWeight:600, fontSize:13 };
 
   return (
     <div style={{ fontFamily:"'Inter',sans-serif", minHeight:"100vh", background:BG, color:TEXT }}>
       <style>{`
-        ::placeholder { color:${TEXT_MUTED} }
-        select option { background:${CARD}; color:${TEXT} }
-        * { box-sizing:border-box }
-        @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        ::placeholder{color:${TEXT_MUTED}} select option{background:${CARD};color:${TEXT}} *{box-sizing:border-box}
+        @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
       `}</style>
 
       {/* Header */}
@@ -240,7 +279,7 @@ export default function App() {
             </div>
           </div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            <button onClick={fetchItems} style={{ ...btnBase, background:"#6a5aaa", border:"none", borderRadius:8, padding:"5px 10px", color:"#e0d8ff", fontSize:16 }} title="Refresh">↻</button>
+            <button onClick={fetchItems} style={{ ...btnBase, background:"#6a5aaa", borderRadius:8, padding:"5px 10px", color:"#e0d8ff", fontSize:16 }} title="Refresh">↻</button>
             <div style={{ background:"#6a5aaa", borderRadius:8, padding:"5px 12px", fontSize:12, color:"#e0d8ff" }}>
               <span style={{ fontWeight:700 }}>{items.length}</span> items · <span style={{ fontWeight:700 }}>{totalQty}</span> total
             </div>
@@ -252,8 +291,8 @@ export default function App() {
       {/* Tabs */}
       <div style={{ background:"#7068a8", borderBottom:`1px solid #6a5aaa`, position:"sticky", top:73, zIndex:19 }}>
         <div style={{ maxWidth:680, margin:"0 auto", display:"flex", padding:"0 20px" }}>
-          {[["inventory","Inventory"],["add","+ Add"],["howto","How to Use"]].map(([t, l]) => (
-            <button key={t} onClick={() => setTab(t)} style={{ ...btnBase, padding:"11px 18px", background:"none",
+          {[["inventory","Inventory"],["add","+ Add"],["scan","📸 Scan"],["howto","How to Use"]].map(([t,l]) => (
+            <button key={t} onClick={() => setTab(t)} style={{ ...btnBase, padding:"11px 16px", background:"none",
               color:tab===t ? CARD : "#c4b8e8", borderBottom:tab===t ? `2px solid ${CARD}` : "2px solid transparent", marginBottom:-1 }}>
               {l}
             </button>
@@ -295,13 +334,12 @@ export default function App() {
 
                 {Object.keys(grouped).sort().map(cat => {
                   const color = CAT_COLORS[cat] || "#94a3b8";
-                  const emoji = CAT_EMOJI[cat] || "📦";
                   const collapsed = collapsedCats[cat];
                   return (
                     <div key={cat} style={{ marginBottom:8, background:CARD, borderRadius:12, border:`1px solid ${CARD_BORDER}`, overflow:"hidden" }}>
                       <button onClick={() => toggleCat(cat)} style={{ ...btnBase, width:"100%", display:"flex", alignItems:"center", gap:10, padding:"10px 16px", background:"none", textAlign:"left" }}>
                         <span style={{ width:3, height:20, borderRadius:2, background:color, flexShrink:0 }}/>
-                        <span style={{ fontSize:14 }}>{emoji}</span>
+                        <span style={{ fontSize:14 }}>{CAT_EMOJI[cat] || "📦"}</span>
                         <span style={{ fontSize:13, fontWeight:700, color:TEXT, flex:1 }}>{cat}</span>
                         <span style={{ fontSize:11, color:TEXT_MUTED, background:"#00000010", borderRadius:5, padding:"2px 8px" }}>{grouped[cat].length}</span>
                         <span style={{ fontSize:10, color:TEXT_MUTED, marginLeft:4 }}>{collapsed ? "▶" : "▼"}</span>
@@ -342,7 +380,6 @@ export default function App() {
                     </div>
                   );
                 })}
-
                 {Object.keys(grouped).length === 0 && (
                   <div style={{ textAlign:"center", padding:60, color:"#c4b8e8" }}>
                     <div style={{ fontSize:40, marginBottom:10 }}>🔍</div>
@@ -358,32 +395,23 @@ export default function App() {
         {tab === "add" && (
           <div style={{ background:CARD, borderRadius:14, border:`1px solid ${CARD_BORDER}`, padding:24, maxWidth:480 }}>
             <h2 style={{ margin:"0 0 20px", fontSize:16, fontWeight:800, color:TEXT }}>Add New Item</h2>
-
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:12, fontWeight:600, color:TEXT_SUB, display:"block", marginBottom:5 }}>Item Name *</label>
-              <input
-                value={addForm.item}
-                onChange={e => setAddForm(f => ({ ...f, item: e.target.value, category:"" }))}
+              <input value={addForm.item}
+                onChange={e => setAddForm(f => ({ ...f, item:e.target.value, category:"" }))}
                 onBlur={e => autoCategorize(e.target.value)}
-                placeholder="e.g. Coconut Milk"
-                style={inputStyle}
-              />
+                placeholder="e.g. Coconut Milk" style={inputStyle}/>
             </div>
-
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:12, fontWeight:600, color:TEXT_SUB, display:"block", marginBottom:5 }}>Brand</label>
-              <input value={addForm.brand} onChange={e => setAddForm(f => ({ ...f, brand: e.target.value }))} placeholder="e.g. Trader Joe's" style={inputStyle}/>
+              <input value={addForm.brand} onChange={e => setAddForm(f => ({ ...f, brand:e.target.value }))} placeholder="e.g. Trader Joe's" style={inputStyle}/>
             </div>
-
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:12, fontWeight:600, color:TEXT_SUB, display:"block", marginBottom:5 }}>Category</label>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <input
-                  value={categorizing ? "Detecting…" : (addForm.category || "")}
-                  readOnly
+                <input value={categorizing ? "Detecting…" : (addForm.category || "")} readOnly
                   placeholder="Auto-detected when you type a name…"
-                  style={{ ...inputStyle, flex:1, color: categorizing ? TEXT_MUTED : (addForm.category ? TEXT : TEXT_MUTED), fontStyle: categorizing ? "italic" : "normal", cursor:"default" }}
-                />
+                  style={{ ...inputStyle, flex:1, color:categorizing ? TEXT_MUTED : (addForm.category ? TEXT : TEXT_MUTED), fontStyle:categorizing?"italic":"normal", cursor:"default" }}/>
                 {addForm.category && !categorizing && (
                   <span style={{ fontSize:11, background:"#ede9fe", color:"#7c3aed", borderRadius:5, padding:"3px 8px", whiteSpace:"nowrap", fontWeight:600 }}>
                     {CAT_EMOJI[addForm.category] || "📦"} {addForm.category}
@@ -391,73 +419,90 @@ export default function App() {
                 )}
               </div>
             </div>
-
             <div style={{ display:"flex", gap:10, marginBottom:20 }}>
               <div style={{ flex:1 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:TEXT_SUB, display:"block", marginBottom:5 }}>Container</label>
-                <select value={addForm.container} onChange={e => setAddForm(f => ({ ...f, container: e.target.value }))} style={{ ...inputStyle, cursor:"pointer" }}>
+                <select value={addForm.container} onChange={e => setAddForm(f => ({ ...f, container:e.target.value }))} style={{ ...inputStyle, cursor:"pointer" }}>
                   {["Can","Jar","Bottle","Box","Bag","Other"].map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div style={{ flex:1 }}>
                 <label style={{ fontSize:12, fontWeight:600, color:TEXT_SUB, display:"block", marginBottom:5 }}>Quantity</label>
-                <input type="number" min={1} value={addForm.quantity} onChange={e => setAddForm(f => ({ ...f, quantity: e.target.value }))} style={inputStyle}/>
+                <input type="number" min={1} value={addForm.quantity} onChange={e => setAddForm(f => ({ ...f, quantity:e.target.value }))} style={inputStyle}/>
               </div>
             </div>
-
-            <button onClick={addItem} style={{ ...btnBase, width:"100%", padding:"12px", background:"#7c6bb5", color:"white", borderRadius:10, fontSize:14, fontWeight:700, boxShadow:"0 4px 16px #7c6bb540", opacity: categorizing ? 0.6 : 1 }}>
+            <button onClick={addItem} style={{ ...btnBase, width:"100%", padding:"12px", background:"#7c6bb5", color:"white", borderRadius:10, fontSize:14, fontWeight:700, boxShadow:"0 4px 16px #7c6bb540", opacity:categorizing?0.6:1 }}>
               {categorizing ? "Detecting category…" : "Add to Pantry"}
             </button>
           </div>
         )}
 
-        {/* HOW TO USE */}
-        {tab === "howto" && (
-          <div style={{ maxWidth:480, margin:"0 auto" }}>
-            <div style={{ background:CARD, borderRadius:4, border:"3px solid #2d1f5e", padding:"16px 20px" }}>
-              <div style={{ borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6 }}>
-                <div style={{ fontSize:38, fontWeight:900, color:TEXT, lineHeight:1, letterSpacing:"-1px" }}>How to Use</div>
-                <div style={{ fontSize:13, color:TEXT, fontWeight:600, marginTop:4 }}>Mise en Stock Pantry Tracker</div>
-              </div>
-              <div style={{ borderBottom:"3px solid #2d1f5e", paddingBottom:6, marginBottom:6 }}>
-                <div style={{ fontSize:12, color:TEXT }}>Serving size <strong>1 photo</strong></div>
-                <div style={{ fontSize:12, color:TEXT }}>Steps per serving <strong>2</strong></div>
-              </div>
-              <div style={{ borderBottom:"8px solid #2d1f5e", paddingBottom:8, marginBottom:6 }}>
-                <div style={{ fontSize:11, color:TEXT, fontWeight:600 }}>Amount per photo</div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end" }}>
-                  <div style={{ fontSize:14, fontWeight:900, color:TEXT }}>Items identified</div>
-                  <div style={{ fontSize:40, fontWeight:900, color:TEXT, lineHeight:1 }}>∞</div>
-                </div>
-              </div>
-              {[
-                { emoji:"📸", title:"Take a photo in Claude", step:"Step 1", desc:"Open Claude.ai on your phone or desktop and take a photo of any pantry items — a single can, a grocery haul, or a whole shelf." },
-                { emoji:"💬", title:'Say "Add this to Mise en Stock"', step:"Step 2", desc:"Just send the photo with that message. Claude will automatically identify every item, categorize it, and add it to your pantry database." },
-                { emoji:"🗑️", title:'Say "Remove this from Mise en Stock"', step:"Step 3", desc:"Used something up? Send a photo and Claude will find the matching item and remove it or reduce the quantity automatically." },
-                { emoji:"↻",  title:"Refresh the app", step:"Step 4", desc:"Hit the ↻ button in the top right after any Claude update and your inventory will reflect the changes instantly." },
-                { emoji:"✏️", title:"Manual edits", step:"Step 5", desc:"Tap any item to expand it and use the +/− buttons to adjust quantity, or the trash icon to delete it directly in the app." },
-              ].map(({ emoji, title, step, desc }) => (
-                <div key={step} style={{ borderTop:"1px solid #2d1f5e", padding:"10px 0" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
-                    <div style={{ fontSize:13, fontWeight:800, color:TEXT }}>{emoji} {title}</div>
-                    <div style={{ fontSize:11, color:TEXT_MUTED, whiteSpace:"nowrap", marginLeft:8 }}>{step}</div>
-                  </div>
-                  <div style={{ fontSize:12, color:TEXT_MUTED, lineHeight:1.6 }}>{desc}</div>
-                </div>
-              ))}
-              <div style={{ borderTop:"3px solid #2d1f5e", marginTop:4, paddingTop:8 }}>
-                <div style={{ fontSize:12, color:TEXT, lineHeight:1.6 }}>
-                  <strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every visible item and updates your pantry in one shot.
-                </div>
-              </div>
-              <div style={{ borderTop:"8px solid #2d1f5e", marginTop:10, paddingTop:8, textAlign:"center" }}>
-                <div style={{ fontSize:10, color:TEXT_MUTED, letterSpacing:"1.5px", fontWeight:700 }}>POWERED BY TINKERBOT STUDIOS</div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* SCAN */}
+        {tab === "scan" && (
+          <div style={{ background:CARD, borderRadius:14, border:`1px solid ${CARD_BORDER}`, padding:24, maxWidth:480 }}>
+            <h2 style={{ margin:"0 0 4px", fontSize:16, fontWeight:800, color:TEXT }}>📸 Scan Items</h2>
+            <p style={{ margin:"0 0 20px", fontSize:13, color:TEXT_MUTED }}>Photo your pantry items — Claude will identify and update your inventory.</p>
 
-      </div>
-    </div>
-  );
-}
+            <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+              {[["add","➕ Add items"],["remove","➖ Remove items"]].map(([m,l]) => (
+                <button key={m} onClick={() => setScanMode(m)} style={{ ...btnBase, flex:1, padding:"10px", borderRadius:8,
+                  border:`2px solid ${scanMode===m?"#7c6bb5":CARD_BORDER}`,
+                  background:scanMode===m?"#7c6bb5":CARD,
+                  color:scanMode===m?"white":TEXT_MUTED }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Hidden inputs: camera vs photo library */}
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={e => handleScanFile(e.target.files[0])}/>
+            <input ref={uploadRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e => handleScanFile(e.target.files[0])}/>
+
+            {!scanImg && (
+              <div style={{ display:"flex", gap:10, marginBottom:16 }}>
+                <button onClick={() => { cameraRef.current.value=""; cameraRef.current.click(); }}
+                  style={{ ...btnBase, flex:1, padding:"14px 10px", borderRadius:10, border:`2px dashed ${CARD_BORDER}`, background:"#f5eef8", color:"#7c6bb5", fontSize:14, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                  <span style={{ fontSize:24 }}>📷</span>
+                  <span>Take Photo</span>
+                </button>
+                <button onClick={() => { uploadRef.current.value=""; uploadRef.current.click(); }}
+                  style={{ ...btnBase, flex:1, padding:"14px 10px", borderRadius:10, border:`2px dashed ${CARD_BORDER}`, background:"#f5eef8", color:"#7c6bb5", fontSize:14, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                  <span style={{ fontSize:24 }}>🖼️</span>
+                  <span>Choose Photo</span>
+                </button>
+              </div>
+            )}
+
+            {scanImg && (
+              <div style={{ marginBottom:16, position:"relative" }}>
+                <img src={scanImg} alt="scan" style={{ width:"100%", borderRadius:10, maxHeight:220, objectFit:"cover" }}/>
+                {!scanLoading && (
+                  <button onClick={() => { setScanImg(null); setScanResult(null); }}
+                    style={{ ...btnBase, position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.5)", color:"white", borderRadius:6, padding:"3px 8px", fontSize:12 }}>
+                    ✕ Clear
+                  </button>
+                )}
+              </div>
+            )}
+
+            {scanLoading && (
+              <div style={{ textAlign:"center", padding:"20px 0", color:"#7c6bb5", fontWeight:600 }}>
+                <div style={{ fontSize:28, marginBottom:6 }}>🔍</div>
+                Identifying items…
+              </div>
+            )}
+
+            {scanResult && !scanResult.error && (
+              <div>
+                <p style={{ fontSize:13, fontWeight:700, color:TEXT, marginBottom:8 }}>Found {scanResult.length} item(s):</p>
+                <div style={{ marginBottom:14, maxHeight:220, overflowY:"auto" }}>
+                  {scanResult.map((s, i) => (
+                    <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 10px", background:"#f5eef8", borderRadius:7, marginBottom:4, fontSize:13 }}>
+                      <span style={{ fontWeight:600, color:TEXT }}>{s.item}</span>
+                      <span style={{ fontSize:11, color:TEXT_MUTED }}>{s.brand} · {CAT_EMOJI[s.category] || "📦"} {s.category}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={() => applyScan(scanResult)}
+                    style={{ ...btnBase, flex:1, padding:"11px", borderRadius:8, background:s
