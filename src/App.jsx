@@ -384,6 +384,16 @@ export default function App() {
   return (
     <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:BG,color:DARK}}>
 
+      <style>{`
+        @media (max-width: 480px) {
+          .stat-badges {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+          }
+        }
+      `}</style>
+
       {/* Header */}
       <div style={{background:BG,color:CARD,padding:"16px 20px",position:"sticky",top:0,zIndex:10}}>
         <div style={{...W,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -395,7 +405,7 @@ export default function App() {
             </div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{display:"flex",gap:6,justifyContent:"flex-end",marginBottom:4}}>
+            <div className="stat-badges" style={{display:"flex",gap:6,justifyContent:"flex-end",marginBottom:4}}>
               <span style={{background:"#ffffff22",borderRadius:6,padding:"3px 9px",fontSize:11,fontWeight:600}}>🥫 {pantryItems.length}</span>
               <span style={{background:"#1e40af44",borderRadius:6,padding:"3px 9px",fontSize:11,fontWeight:600}}>❄️ {freezerItems.length}</span>
               <span style={{background:"#ffffff22",borderRadius:6,padding:"3px 9px",fontSize:11,fontWeight:600}}>{totalQty} qty</span>
