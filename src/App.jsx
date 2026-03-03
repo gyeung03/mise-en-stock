@@ -82,7 +82,6 @@ export default function App() {
   const [scanMode, setScanMode] = useState("add");
   const [toast, setToast] = useState(null);
   const fileRef = useRef();
-  const cameraRef = useRef();
   const catTimer = useRef();
 
   const notify = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
@@ -174,17 +173,28 @@ export default function App() {
 
   const handleScan = e => {
     const file = e.target.files[0]; if(!file) return;
-    const r = new FileReader();
-    r.onload = async ev => {
-      const b64 = ev.target.result.split(",")[1];
-      setScanImg(ev.target.result); setScanLoading(true); setScanResult(null);
+    e.target.value = "";
+    setScanImg(null); setScanLoading(true); setScanResult(null);
+
+    const img = new Image();
+    img.onload = async () => {
+      const MAX = 1024;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      const compressed = dataUrl.split(",")[1];
+      setScanImg(dataUrl);
+
       try {
         const existingCatsStr = cats.join(", ");
         const res = await fetch("/api/scan", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            image: b64,
-            mimeType: file.type,
+            image: compressed,
+            mimeType: "image/jpeg",
             prompt: `Identify all pantry items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${existingCatsStr}.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
           })
         });
@@ -194,7 +204,10 @@ export default function App() {
       } catch(err) { setScanResult({error:true}); }
       setScanLoading(false);
     };
-    r.readAsDataURL(file);
+    img.onerror = () => { setScanResult({error:true}); setScanLoading(false); };
+
+    // Use object URL for reliable loading including HEIC on iOS
+    img.src = URL.createObjectURL(file);
   };
 
   const applyScan = async scanned => {
@@ -386,7 +399,10 @@ export default function App() {
               <span style={{fontWeight:700,fontSize:14,color:DARK}}>Take or Choose Photo</span>
             </button>
           </div>}
-          {scanImg&&<img src={scanImg} alt="" style={{width:"100%",borderRadius:10,marginBottom:12,maxHeight:200,objectFit:"cover"}}/>}
+          {scanImg&&!scanLoading&&<div style={{marginBottom:12}}>
+            <img src={scanImg} alt="" style={{width:"100%",borderRadius:10,marginBottom:8,maxHeight:200,objectFit:"cover"}}/>
+            <button onClick={()=>{setScanImg(null);setScanResult(null);}} style={{...btn("#f0e8f8",ACCENT),width:"100%",padding:"8px 0",fontSize:13}}>🔄 Try Again</button>
+          </div>}
           {scanLoading&&<div style={{textAlign:"center",padding:20,color:ACCENT,fontWeight:700}}>Identifying items...</div>}
           {scanResult&&!scanResult.error&&<div>
             <div style={{fontWeight:700,fontSize:14,marginBottom:8,color:DARK}}>Found {scanResult.length} item(s):</div>
