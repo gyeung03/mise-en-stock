@@ -1,59 +1,34 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+
+const SB_URL = "https://wzcnkfczkfjmphjzaeea.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6Y25rZmN6a2ZqbXBoanphZWVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0ODE5NDksImV4cCI6MjA4ODA1Nzk0OX0.mkXO4wnFk0l3-j3CIaCL3qoYt7oKvEmCEtm98ABWCvI";
+const HEADERS = { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Prefer": "return=representation" };
 
 const BG = "#8a78c0";
 const CARD = "#fdf0e8";
 const DARK = "#3d2f6b";
 const ACCENT = "#6c5bb5";
 
-const INITIAL_ITEMS = [
-  {id:1,category:"Broths & Stocks",item:"Beef Broth",brand:"College Inn",container:"Can",quantity:1},
-  {id:2,category:"Canned Beans & Legumes",item:"Garbanzo Beans",brand:"Trader Joe's",container:"Can",quantity:2},
-  {id:3,category:"Canned Beans & Legumes",item:"Black Beans",brand:"Goya",container:"Can",quantity:3},
-  {id:4,category:"Canned Beans & Legumes",item:"Kidney Beans",brand:"Bush's",container:"Can",quantity:2},
-  {id:5,category:"Canned Beans & Legumes",item:"Lentils",brand:"",container:"Can",quantity:1},
-  {id:6,category:"Canned Fish & Seafood",item:"Albacore Tuna",brand:"Starkist",container:"Can",quantity:4},
-  {id:7,category:"Canned Fish & Seafood",item:"Sardines in Olive Oil",brand:"King Oscar",container:"Can",quantity:2},
-  {id:8,category:"Canned Fish & Seafood",item:"Anchovies",brand:"Cento",container:"Can",quantity:1},
-  {id:9,category:"Canned Meats",item:"Chicken Breast",brand:"Swanson",container:"Can",quantity:2},
-  {id:10,category:"Canned Shellfish",item:"Whole Baby Clams",brand:"Cento",container:"Can",quantity:2},
-  {id:11,category:"Canned Tomatoes",item:"Crushed Tomatoes",brand:"Muir Glen",container:"Can",quantity:3},
-  {id:12,category:"Canned Tomatoes",item:"Diced Tomatoes",brand:"Hunt's",container:"Can",quantity:2},
-  {id:13,category:"Canned Tomatoes",item:"Tomato Paste",brand:"Cento",container:"Can",quantity:3},
-  {id:14,category:"Canned Tomatoes",item:"San Marzano Tomatoes",brand:"Rega",container:"Can",quantity:2},
-  {id:15,category:"Canned Vegetables",item:"Artichoke Hearts",brand:"Cento",container:"Can",quantity:1},
-  {id:16,category:"Canned Vegetables",item:"Corn",brand:"Del Monte",container:"Can",quantity:2},
-  {id:17,category:"Canned Vegetables",item:"Green Beans",brand:"Del Monte",container:"Can",quantity:1},
-  {id:18,category:"Condiments & Chili Pastes",item:"Chili Crisp",brand:"Fly By Jing",container:"Jar",quantity:1},
-  {id:19,category:"Condiments & Chili Pastes",item:"Gochujang",brand:"CJ",container:"Jar",quantity:1},
-  {id:20,category:"Condiments & Pickled Items",item:"Capers",brand:"Cento",container:"Jar",quantity:1},
-  {id:21,category:"Condiments & Pickled Items",item:"Cornichons",brand:"Trader Joe's",container:"Jar",quantity:1},
-  {id:22,category:"Condiments & Pickled Items",item:"Dill Pickles",brand:"Vlasic",container:"Jar",quantity:1},
-  {id:23,category:"Condiments & Preserved Vegetables",item:"Roasted Red Peppers",brand:"Cento",container:"Jar",quantity:2},
-  {id:24,category:"Condiments & Preserved Vegetables",item:"Sun-Dried Tomatoes",brand:"Trader Joe's",container:"Jar",quantity:1},
-  {id:25,category:"Condiments & Sauces",item:"Dijon Mustard",brand:"Maille",container:"Jar",quantity:1},
-  {id:26,category:"Condiments & Sauces",item:"Fish Sauce",brand:"Red Boat",container:"Bottle",quantity:1},
-  {id:27,category:"Condiments & Sauces",item:"Hot Sauce",brand:"Tabasco",container:"Bottle",quantity:2},
-  {id:28,category:"Condiments & Sauces",item:"Soy Sauce",brand:"Kikkoman",container:"Bottle",quantity:1},
-  {id:29,category:"Condiments & Sauces",item:"Worcestershire Sauce",brand:"Lea & Perrins",container:"Bottle",quantity:1},
-  {id:30,category:"Gravies & Meal Sauces",item:"Brown Gravy",brand:"McCormick",container:"Can",quantity:2},
-  {id:31,category:"Prepared Meals",item:"Chicken Noodle Soup",brand:"Campbell's",container:"Can",quantity:2},
-  {id:32,category:"Sauces & Cooking Bases",item:"Coconut Milk",brand:"Thai Kitchen",container:"Can",quantity:3},
-  {id:33,category:"Sauces & Cooking Bases",item:"Mango Chutney",brand:"Trader Joe's",container:"Jar",quantity:1},
-  {id:34,category:"Sauces & Cooking Bases",item:"Oyster Sauce",brand:"Lee Kum Kee",container:"Bottle",quantity:1},
-  {id:35,category:"Sauces & Cooking Bases",item:"Pasta Sauce",brand:"Rao's",container:"Jar",quantity:2},
-  {id:36,category:"Soups",item:"Lentil Soup",brand:"Progresso",container:"Can",quantity:2},
-  {id:37,category:"Soups",item:"Minestrone",brand:"Progresso",container:"Can",quantity:1},
-  {id:38,category:"Soups",item:"Tomato Soup",brand:"Campbell's",container:"Can",quantity:2},
-];
-
 const CAT_COLORS = {
   "Broths & Stocks":"#06b6d4","Canned Beans & Legumes":"#10b981","Canned Fish & Seafood":"#3b82f6",
   "Canned Meats":"#ef4444","Canned Shellfish":"#8b5cf6","Canned Tomatoes":"#f43f5e",
-  "Canned Vegetables":"#84cc16","Condiments & Chili Pastes":"#f97316","Condiments & Pickled Items":"#14b8a6",
+  "Canned Vegetables":"#84cc16","Canned Eggs & Specialty":"#f59e0b",
+  "Condiments & Chili Pastes":"#f97316","Condiments & Pickled Items":"#14b8a6",
   "Condiments & Preserved Vegetables":"#f59e0b","Condiments & Sauces":"#a855f7",
   "Dairy & Shelf-Stable Milk":"#ec4899","Gravies & Meal Sauces":"#d97706",
   "Prepared Meals":"#0ea5e9","Sauces & Cooking Bases":"#e879f9","Soups":"#6366f1","Other":"#94a3b8"
 };
+
+const HOW_TO = [
+  {label:"Adding Items", options:[
+    {icon:"➕", title:"Add tab", desc:"Manually enter a new item — fill in the name, brand, category, container type, and quantity."},
+    {icon:"📷", title:"Scan tab", desc:"Take or upload a photo of your pantry items. Claude will identify everything and add it to your inventory automatically."},
+  ]},
+  {label:"Removing Items", options:[
+    {icon:"📸", title:"Scan tab", desc:"Switch to Remove mode before uploading your photo. Claude will find matching items and delete or reduce their quantity."},
+    {icon:"🗑️", title:"Pantry tab", desc:"Tap any item to expand it, then hit the trash icon to delete it or use +/- to adjust the quantity."},
+  ]},
+];
 
 function QBadge({q}) {
   const bg = q===0?"#ef4444":q===1?"#f97316":q===2?"#eab308":"#22c55e";
@@ -68,8 +43,16 @@ function timeAgo(date) {
   return Math.floor(diff/86400)+"d ago";
 }
 
+async function sbFetch(path, opts={}) {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, { ...opts, headers: { ...HEADERS, ...(opts.headers||{}) } });
+  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 export default function App() {
-  const [items, setItems] = useState(INITIAL_ITEMS);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("inventory");
   const [search, setSearch] = useState("");
@@ -82,16 +65,18 @@ export default function App() {
   const [scanResult, setScanResult] = useState(null);
   const [scanMode, setScanMode] = useState("add");
   const [toast, setToast] = useState(null);
-  const [lastUpdated] = useState(new Date());
   const fileRef = useRef();
   const cameraRef = useRef();
-  const nextId = useRef(200);
 
   const notify = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
+  const addLog = (type, item, qty) => setLog(p=>[{id:Date.now(),type,item,qty,at:Date.now()},...p].slice(0,100));
 
-  const addLog = (type, item, qty) => {
-    setLog(p=>[{id:Date.now(),type,item,qty,at:Date.now()},...p].slice(0,100));
-  };
+  // Load from Supabase on mount
+  useEffect(() => {
+    sbFetch("pantry_items?select=*&order=category.asc,item.asc")
+      .then(data => { setItems(data||[]); setLoading(false); })
+      .catch(e => { notify("Failed to load: "+e.message,"err"); setLoading(false); });
+  }, []);
 
   const totalQty = items.reduce((a,i)=>a+i.quantity,0);
   const lowStock = items.filter(i=>i.quantity<=1).length;
@@ -99,37 +84,50 @@ export default function App() {
 
   const filtered = items.filter(i => {
     const s = search.toLowerCase();
-    const matchS = !s || i.item.toLowerCase().includes(s) || i.brand.toLowerCase().includes(s);
-    const matchC = filterCat==="All" || i.category===filterCat;
-    return matchS && matchC;
+    return (!s || i.item.toLowerCase().includes(s) || i.brand.toLowerCase().includes(s))
+      && (filterCat==="All" || i.category===filterCat);
   });
   const grouped = filtered.reduce((acc,i)=>{ (acc[i.category]=acc[i.category]||[]).push(i); return acc; },{});
 
   const toggleCat = c => setCollapsed(p=>({...p,[c]:!p[c]}));
 
-  const updateQty = (id, d) => {
-    const it = items.find(i=>i.id===id);
-    if(!it) return;
+  const updateQty = async (id, d) => {
+    const it = items.find(i=>i.id===id); if(!it) return;
     const newQ = Math.max(0, it.quantity+d);
     setItems(p=>p.map(i=>i.id===id?{...i,quantity:newQ}:i));
-    addLog(d>0?"added":"removed", it.item, Math.abs(d));
+    try {
+      await sbFetch(`pantry_items?id=eq.${id}`, { method:"PATCH", body: JSON.stringify({quantity:newQ}) });
+      addLog(d>0?"added":"removed", it.item, Math.abs(d));
+    } catch(e) {
+      setItems(p=>p.map(i=>i.id===id?{...i,quantity:it.quantity}:i));
+      notify("Update failed","err");
+    }
   };
 
-  const deleteItem = id => {
+  const deleteItem = async id => {
     const it = items.find(i=>i.id===id);
-    if(it) addLog("removed", it.item, it.quantity);
     setItems(p=>p.filter(i=>i.id!==id));
     setExpandedId(null);
-    notify("Removed","err");
+    try {
+      await sbFetch(`pantry_items?id=eq.${id}`, { method:"DELETE", headers:{"Prefer":"return=minimal"} });
+      if(it) addLog("removed", it.item, it.quantity);
+      notify("Removed","err");
+    } catch(e) {
+      setItems(p=>[...p, it]);
+      notify("Delete failed","err");
+    }
   };
 
-  const addItem = () => {
+  const addItem = async () => {
     if(!addForm.item.trim()||!addForm.category) return;
-    const qty = Number(addForm.quantity);
-    setItems(p=>[...p,{...addForm,id:nextId.current++,quantity:qty}]);
-    addLog("added", addForm.item, qty);
-    setAddForm({item:"",brand:"",category:"",container:"Can",quantity:1});
-    notify("Item added!");
+    const newItem = {...addForm, quantity:Number(addForm.quantity)};
+    try {
+      const [created] = await sbFetch("pantry_items", { method:"POST", body: JSON.stringify(newItem) });
+      setItems(p=>[...p, created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
+      addLog("added", newItem.item, newItem.quantity);
+      setAddForm({item:"",brand:"",category:"",container:"Can",quantity:1});
+      notify("Item added!");
+    } catch(e) { notify("Add failed: "+e.message,"err"); }
   };
 
   const handleScan = e => {
@@ -140,10 +138,10 @@ export default function App() {
       setScanImg(ev.target.result); setScanLoading(true); setScanResult(null);
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages",{
-          method:"POST",headers:{"Content-Type":"application/json"},
+          method:"POST", headers:{"Content-Type":"application/json"},
           body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:file.type,data:b64}},
-            {type:"text",text:"Return ONLY a JSON array: [{\"item\":\"name\",\"brand\":\"brand or empty\",\"container\":\"Can/Jar/Bottle/Box/Bag/Other\",\"quantity\":1,\"category\":\"best match from: Broths & Stocks, Canned Beans & Legumes, Canned Fish & Seafood, Canned Meats, Canned Shellfish, Canned Tomatoes, Canned Vegetables, Condiments & Chili Pastes, Condiments & Pickled Items, Condiments & Preserved Vegetables, Condiments & Sauces, Dairy & Shelf-Stable Milk, Gravies & Meal Sauces, Prepared Meals, Sauces & Cooking Bases, Soups, Other\"}]. No other text."}
+            {type:"text",text:"Return ONLY a JSON array: [{\"item\":\"name\",\"brand\":\"brand or empty\",\"container\":\"Can/Jar/Bottle/Box/Bag/Other\",\"quantity\":1,\"category\":\"best match from: Broths & Stocks, Canned Beans & Legumes, Canned Fish & Seafood, Canned Meats, Canned Shellfish, Canned Tomatoes, Canned Vegetables, Canned Eggs & Specialty, Condiments & Chili Pastes, Condiments & Pickled Items, Condiments & Preserved Vegetables, Condiments & Sauces, Dairy & Shelf-Stable Milk, Gravies & Meal Sauces, Prepared Meals, Sauces & Cooking Bases, Soups, Other\"}]. No other text."}
           ]}]})
         });
         const data = await res.json();
@@ -155,40 +153,51 @@ export default function App() {
     r.readAsDataURL(file);
   };
 
-  const applyScan = scanned => {
+  const applyScan = async scanned => {
     if(scanMode==="add"){
-      setItems(p=>[...p,...scanned.map(s=>({...s,id:nextId.current++,quantity:s.quantity||1}))]);
-      scanned.forEach(s=>addLog("added", s.item, s.quantity||1));
-      notify("Added "+scanned.length+" item(s)!");
+      try {
+        const created = await sbFetch("pantry_items", { method:"POST", body: JSON.stringify(scanned.map(s=>({...s,quantity:s.quantity||1}))) });
+        setItems(p=>[...p,...created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
+        scanned.forEach(s=>addLog("added", s.item, s.quantity||1));
+        notify("Added "+scanned.length+" item(s)!");
+      } catch(e) { notify("Scan add failed","err"); }
     } else {
-      let upd=[...items],removed=0;
-      scanned.forEach(s=>{
+      let upd=[...items], removed=0;
+      for(const s of scanned) {
         const idx=upd.findIndex(i=>i.item.toLowerCase().includes(s.item.toLowerCase())||s.item.toLowerCase().includes(i.item.toLowerCase()));
         if(idx!==-1){
           const nq=upd[idx].quantity-(s.quantity||1);
-          addLog("removed", upd[idx].item, s.quantity||1);
-          if(nq<=0) upd.splice(idx,1); else upd[idx]={...upd[idx],quantity:nq};
-          removed++;
+          try {
+            if(nq<=0){
+              await sbFetch(`pantry_items?id=eq.${upd[idx].id}`, {method:"DELETE",headers:{"Prefer":"return=minimal"}});
+              addLog("removed", upd[idx].item, upd[idx].quantity);
+              upd.splice(idx,1);
+            } else {
+              await sbFetch(`pantry_items?id=eq.${upd[idx].id}`, {method:"PATCH", body:JSON.stringify({quantity:nq})});
+              addLog("removed", upd[idx].item, s.quantity||1);
+              upd[idx]={...upd[idx],quantity:nq};
+            }
+            removed++;
+          } catch(e) { notify("Remove failed","err"); }
         }
-      });
+      }
       setItems(upd); notify("Removed "+removed+" item(s)");
     }
     setScanResult(null); setScanImg(null); setTab("inventory");
   };
 
-  const thirtyDaysAgo = Date.now() - 30*24*60*60*1000;
-  const recentLog = log.filter(e=>e.at>=thirtyDaysAgo);
-
-  const formattedDate = lastUpdated.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+  const recentLog = log.filter(e=>e.at>=Date.now()-30*24*60*60*1000);
+  const formattedDate = new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
   const inp = {width:"100%",padding:"10px 12px",border:"2px solid #b8aee0",borderRadius:8,fontSize:14,boxSizing:"border-box",background:"#fff",fontFamily:"inherit",outline:"none"};
   const btn = (bg,color)=>({padding:"10px 18px",background:bg,color:color||"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"});
+  const W = {maxWidth:680,margin:"0 auto"};
 
   return (
     <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:BG,color:DARK}}>
 
       {/* Header */}
       <div style={{background:BG,color:CARD,padding:"16px 20px",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{...W,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontSize:46,lineHeight:1}}>🥫</span>
             <div>
@@ -208,19 +217,24 @@ export default function App() {
       </div>
 
       {/* Tabs */}
-      <div style={{background:CARD,borderBottom:"2px solid #b8aee044",display:"flex",padding:"0 8px",overflowX:"auto"}}>
-        {[["inventory","🥫 Pantry"],["add","➕ Add"],["scan","📸 Scan"],["log","📋 Log"],["info","❓ How to Use"]].map(([t,l])=>(
-          <button key={t} onClick={()=>setTab(t)} style={{padding:"12px 12px",border:"none",background:"none",fontWeight:700,fontSize:12,cursor:"pointer",color:tab===t?ACCENT:"#a09abb",borderBottom:tab===t?"3px solid "+ACCENT:"3px solid transparent",transition:"all .15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>{l}</button>
-        ))}
+      <div style={{background:CARD,borderBottom:"2px solid #b8aee044"}}>
+        <div style={{...W,display:"flex",padding:"0 8px",overflowX:"auto"}}>
+          {[["inventory","🥫 Pantry"],["add","➕ Add"],["scan","📸 Scan"],["log","📋 Log"],["info","❓ How to Use"]].map(([t,l])=>(
+            <button key={t} onClick={()=>setTab(t)} style={{padding:"12px 12px",border:"none",background:"none",fontWeight:700,fontSize:12,cursor:"pointer",color:tab===t?ACCENT:"#a09abb",borderBottom:tab===t?"3px solid "+ACCENT:"3px solid transparent",transition:"all .15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>{l}</button>
+          ))}
+        </div>
       </div>
 
       {/* Toast */}
       {toast&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:toast.type==="err"?"#ef4444":ACCENT,color:"#fff",padding:"10px 20px",borderRadius:20,fontWeight:700,fontSize:13,zIndex:99,boxShadow:"0 4px 12px #0003"}}>{toast.msg}</div>}
 
-      <div style={{padding:"16px 16px 80px"}}>
+      <div style={{...W,padding:"16px 16px 80px"}}>
+
+        {/* Loading */}
+        {loading&&<div style={{textAlign:"center",padding:40,color:CARD,fontWeight:700,fontSize:16}}>Loading pantry...</div>}
 
         {/* INVENTORY TAB */}
-        {tab==="inventory"&&<>
+        {!loading&&tab==="inventory"&&<>
           <div style={{display:"flex",gap:8,marginBottom:14}}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search items or brands..." style={{...inp,flex:1}}/>
             <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{...inp,width:120,cursor:"pointer"}}>
@@ -263,7 +277,7 @@ export default function App() {
         </>}
 
         {/* ADD TAB */}
-        {tab==="add"&&<div style={{background:CARD,borderRadius:16,padding:20,boxShadow:"0 2px 12px #0001"}}>
+        {!loading&&tab==="add"&&<div style={{background:CARD,borderRadius:16,padding:20,boxShadow:"0 2px 12px #0001"}}>
           <div style={{fontWeight:800,fontSize:17,marginBottom:16,color:DARK}}>Add New Item</div>
           {[["Item Name *","item","text","e.g. Cannellini Beans"],["Brand","brand","text","e.g. Cento"]].map(([lbl,f,t,ph])=>(
             <div key={f} style={{marginBottom:12}}>
@@ -295,7 +309,7 @@ export default function App() {
         </div>}
 
         {/* SCAN TAB */}
-        {tab==="scan"&&<div style={{background:CARD,borderRadius:16,padding:20,boxShadow:"0 2px 12px #0001"}}>
+        {!loading&&tab==="scan"&&<div style={{background:CARD,borderRadius:16,padding:20,boxShadow:"0 2px 12px #0001"}}>
           <div style={{fontWeight:800,fontSize:17,marginBottom:4,color:DARK}}>📷 Scan Items</div>
           <div style={{fontSize:13,color:"#a09abb",marginBottom:16}}>Photo your pantry items — Claude will identify and update your inventory.</div>
           <div style={{display:"flex",gap:8,marginBottom:20}}>
@@ -326,9 +340,7 @@ export default function App() {
               </div>
             ))}
             <div style={{display:"flex",gap:8,marginTop:14}}>
-              <button onClick={()=>applyScan(scanResult)} style={{...btn(ACCENT),flex:1,padding:11}}>
-                {scanMode==="add"?"Add All":"Remove All"}
-              </button>
+              <button onClick={()=>applyScan(scanResult)} style={{...btn(ACCENT),flex:1,padding:11}}>{scanMode==="add"?"Add All":"Remove All"}</button>
               <button onClick={()=>{setScanResult(null);setScanImg(null);}} style={{...btn("#f0e8f8",ACCENT),padding:"11px 14px"}}>Cancel</button>
             </div>
           </div>}
@@ -336,28 +348,22 @@ export default function App() {
         </div>}
 
         {/* LOG TAB */}
-        {tab==="log"&&<div>
+        {!loading&&tab==="log"&&<div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div style={{fontWeight:800,fontSize:16,color:CARD}}>Activity — last 30 days</div>
             {recentLog.length>0&&<button onClick={()=>setLog([])} style={{...btn("#ffffff33",CARD),padding:"5px 12px",fontSize:12}}>Clear</button>}
           </div>
           {recentLog.length===0
-            ? <div style={{background:CARD,borderRadius:14,padding:32,textAlign:"center",color:"#a09abb",fontSize:14}}>
-                No activity yet. Add or remove items to see your log here.
-              </div>
+            ? <div style={{background:CARD,borderRadius:14,padding:32,textAlign:"center",color:"#a09abb",fontSize:14}}>No activity yet. Add or remove items to see your log here.</div>
             : <div style={{background:CARD,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px #0002"}}>
                 {recentLog.map((e,idx)=>(
                   <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:idx<recentLog.length-1?"1px solid #f0e8f8":"none"}}>
                     <span style={{fontSize:18}}>{e.type==="added"?"➕":"➖"}</span>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:600,fontSize:14,color:DARK}}>{e.item}</div>
-                      <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>
-                        {e.type==="added"?"Added":"Removed"} {e.qty} &bull; {timeAgo(e.at)}
-                      </div>
+                      <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>{e.type==="added"?"Added":"Removed"} {e.qty} &bull; {timeAgo(e.at)}</div>
                     </div>
-                    <span style={{fontSize:11,fontWeight:700,color:e.type==="added"?"#22c55e":"#ef4444",background:e.type==="added"?"#f0fdf4":"#fff5f5",borderRadius:6,padding:"3px 8px"}}>
-                      {e.type==="added"?"+":"-"}{e.qty}
-                    </span>
+                    <span style={{fontSize:11,fontWeight:700,color:e.type==="added"?"#22c55e":"#ef4444",background:e.type==="added"?"#f0fdf4":"#fff5f5",borderRadius:6,padding:"3px 8px"}}>{e.type==="added"?"+":"-"}{e.qty}</span>
                   </div>
                 ))}
               </div>
@@ -375,16 +381,7 @@ export default function App() {
             <span style={{fontWeight:900,fontSize:20}}>Items identified</span>
             <span style={{fontWeight:900,fontSize:26}}>∞</span>
           </div>
-          {[
-            {label:"Adding Items", options:[
-              {icon:"➕", title:"Add tab", desc:"Manually enter a new item — fill in the name, brand, category, container type, and quantity."},
-              {icon:"📷", title:"Scan tab", desc:"Take or upload a photo of your pantry items. Claude will identify everything and add it to your inventory automatically."},
-            ]},
-            {label:"Removing Items", options:[
-              {icon:"📸", title:"Scan tab", desc:"Switch to Remove mode before uploading your photo. Claude will find matching items and delete or reduce their quantity."},
-              {icon:"🗑️", title:"Pantry tab", desc:"Tap any item to expand it, then hit the trash icon to delete it or use +/- to adjust the quantity."},
-            ]},
-          ].map(({label,options})=>(
+          {HOW_TO.map(({label,options})=>(
             <div key={label} style={{marginBottom:14}}>
               <div style={{fontWeight:900,fontSize:13,letterSpacing:"0.5px",marginBottom:8,borderBottom:"1px solid #111",paddingBottom:4}}>{label}</div>
               {options.map((o,i)=>(
@@ -398,9 +395,7 @@ export default function App() {
               ))}
             </div>
           ))}
-          <div style={{fontSize:12,lineHeight:1.5,marginTop:4}}>
-            <strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every visible item and updates your pantry in one shot.
-          </div>
+          <div style={{fontSize:12,lineHeight:1.5,marginTop:4}}><strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every visible item and updates your pantry in one shot.</div>
           <div style={{height:8,background:"#111",margin:"14px 0 10px"}}/>
           <div style={{textAlign:"center",fontSize:11,letterSpacing:"2px",color:"#555",fontWeight:600}}>POWERED BY TINKERBOT STUDIOS</div>
         </div>}
