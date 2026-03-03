@@ -311,7 +311,7 @@ export default function App() {
                         style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:idx<grouped[cat].length-1?"1px solid #f0e8f8":"none",background:expandedId===item.id?"#f5eeff":"transparent"}}>
                         <QBadge q={item.quantity}/>
                         <span style={{flex:1,fontWeight:600,fontSize:14,color:DARK}}>{item.item}</span>
-                        <span style={{fontSize:12,color:"#a09abb"}}>{item.brand}</span>
+                        <span style={{fontSize:12,color:"#a09abb"}}>{item.brand}{item.size ? ` · ${item.size}` : ""}</span>
                       </div>
                       {expandedId===item.id&&<div style={{background:"#f5eeff",padding:"10px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:idx<grouped[cat].length-1?"1px solid #f0e8f8":"none"}}>
                         <button onClick={()=>updateQty(item.id,-1)} style={{...btn("#e0d8f8",ACCENT),padding:"6px 14px",fontSize:16}}>-</button>
@@ -367,6 +367,11 @@ export default function App() {
               </div>}
             </div>
             {catSuggestion&&!catLoading&&<div style={{fontSize:11,color:"#22c55e",marginTop:4}}>✨ Auto-suggested: {catSuggestion}</div>}
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>Size</label>
+            <input value={addForm.size||""} onChange={e=>setAddForm(p=>({...p,size:e.target.value}))} placeholder="e.g. 14 oz, 400g (optional)" style={inp}/>
           </div>
 
           <div style={{display:"flex",gap:10,marginBottom:16}}>
