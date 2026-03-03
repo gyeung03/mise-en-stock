@@ -50,17 +50,14 @@ async function sbFetch(path, opts={}) {
 
 async function autoCategory(itemName, brand, existingCats) {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("/api/scan", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514", max_tokens: 100,
-        messages: [{ role: "user", content:
-          `Given this pantry item: "${itemName}" by "${brand}", pick the single best category from this list, or invent a short new one if nothing fits:\n${existingCats.join(", ")}\n\nReturn ONLY the category name, nothing else.`
-        }]
+        prompt: `Given this pantry item: "${itemName}" by "${brand}", pick the single best category from this list, or invent a short new one if nothing fits:\n${existingCats.join(", ")}\n\nReturn ONLY the category name, nothing else.`
       })
     });
     const data = await res.json();
-    return data.content[0].text.trim();
+    return data.result.trim();
   } catch(e) { return "Other"; }
 }
 
@@ -167,15 +164,16 @@ export default function App() {
       setScanImg(ev.target.result); setScanLoading(true); setScanResult(null);
       try {
         const existingCatsStr = cats.join(", ");
-        const res = await fetch("https://api.anthropic.com/v1/messages",{
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[
-            {type:"image",source:{type:"base64",media_type:file.type,data:b64}},
-            {type:"text",text:`Identify all pantry items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${existingCatsStr}.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`}
-          ]}]})
+        const res = await fetch("/api/scan", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: b64,
+            mimeType: file.type,
+            prompt: `Identify all pantry items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${existingCatsStr}.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
+          })
         });
         const data = await res.json();
-        const txt = data.content.map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();
+        const txt = data.result.replace(/```json|```/g,"").trim();
         setScanResult(JSON.parse(txt));
       } catch(err) { setScanResult({error:true}); }
       setScanLoading(false);
