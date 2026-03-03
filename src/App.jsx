@@ -11,22 +11,20 @@ const ACCENT = "#6c5bb5";
 
 const CAT_COLORS = {
   "Broths & Stocks":"#06b6d4","Canned Beans & Legumes":"#10b981","Canned Fish & Seafood":"#3b82f6",
-  "Canned Meats":"#ef4444","Canned Shellfish":"#8b5cf6","Canned Tomatoes":"#f43f5e",
-  "Canned Vegetables":"#84cc16","Canned Eggs & Specialty":"#f59e0b",
-  "Condiments & Chili Pastes":"#f97316","Condiments & Pickled Items":"#14b8a6",
-  "Condiments & Preserved Vegetables":"#f59e0b","Condiments & Sauces":"#a855f7",
+  "Canned Meats":"#ef4444","Canned Other":"#f59e0b","Canned Tomatoes":"#f43f5e",
+  "Canned Vegetables":"#84cc16","Condiments":"#f97316","Pickled Items":"#14b8a6",
   "Dairy & Shelf-Stable Milk":"#ec4899","Gravies & Meal Sauces":"#d97706",
-  "Prepared Meals":"#0ea5e9","Sauces & Cooking Bases":"#e879f9","Soups":"#6366f1","Other":"#94a3b8"
+  "Pasta Sauces":"#e879f9","Prepared Meals":"#0ea5e9","Soups":"#6366f1","Other":"#94a3b8"
 };
 
 const HOW_TO = [
   {label:"Adding Items", options:[
-    {icon:"➕", title:"Add tab", desc:"Manually enter a new item — fill in the name, brand, category, container type, and quantity."},
-    {icon:"📷", title:"Scan tab", desc:"Take or upload a photo of your pantry items. Claude will identify everything and add it to your inventory automatically."},
+    {icon:"➕", title:"Add tab", desc:"Type the item name and brand — the category will be suggested automatically. Adjust if needed."},
+    {icon:"📷", title:"Scan tab", desc:"Take or upload a photo. Claude identifies every item and picks the best category automatically."},
   ]},
   {label:"Removing Items", options:[
-    {icon:"📸", title:"Scan tab", desc:"Switch to Remove mode before uploading your photo. Claude will find matching items and delete or reduce their quantity."},
-    {icon:"🗑️", title:"Pantry tab", desc:"Tap any item to expand it, then hit the trash icon to delete it or use +/- to adjust the quantity."},
+    {icon:"📸", title:"Scan tab", desc:"Switch to Remove mode before uploading your photo. Claude finds matching items and removes them."},
+    {icon:"🗑️", title:"Pantry tab", desc:"Tap any item to expand it, then hit the trash icon to delete or use +/- to adjust quantity."},
   ]},
 ];
 
@@ -50,6 +48,22 @@ async function sbFetch(path, opts={}) {
   return text ? JSON.parse(text) : null;
 }
 
+async function autoCategory(itemName, brand, existingCats) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514", max_tokens: 100,
+        messages: [{ role: "user", content:
+          `Given this pantry item: "${itemName}" by "${brand}", pick the single best category from this list, or invent a short new one if nothing fits:\n${existingCats.join(", ")}\n\nReturn ONLY the category name, nothing else.`
+        }]
+      })
+    });
+    const data = await res.json();
+    return data.content[0].text.trim();
+  } catch(e) { return "Other"; }
+}
+
 export default function App() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +74,9 @@ export default function App() {
   const [collapsed, setCollapsed] = useState({});
   const [expandedId, setExpandedId] = useState(null);
   const [addForm, setAddForm] = useState({item:"",brand:"",category:"",container:"Can",quantity:1});
+  const [catSuggestion, setCatSuggestion] = useState("");
+  const [catLoading, setCatLoading] = useState(false);
+  const [showCatList, setShowCatList] = useState(false);
   const [scanImg, setScanImg] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState(null);
@@ -67,20 +84,20 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const fileRef = useRef();
   const cameraRef = useRef();
+  const catTimer = useRef();
 
   const notify = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
   const addLog = (type, item, qty) => setLog(p=>[{id:Date.now(),type,item,qty,at:Date.now()},...p].slice(0,100));
 
-  // Load from Supabase on mount
   useEffect(() => {
     sbFetch("pantry_items?select=*&order=category.asc,item.asc")
       .then(data => { setItems(data||[]); setLoading(false); })
       .catch(e => { notify("Failed to load: "+e.message,"err"); setLoading(false); });
   }, []);
 
+  const cats = [...new Set(items.map(i=>i.category))].sort();
   const totalQty = items.reduce((a,i)=>a+i.quantity,0);
   const lowStock = items.filter(i=>i.quantity<=1).length;
-  const cats = [...new Set(items.map(i=>i.category))].sort();
 
   const filtered = items.filter(i => {
     const s = search.toLowerCase();
@@ -90,6 +107,20 @@ export default function App() {
   const grouped = filtered.reduce((acc,i)=>{ (acc[i.category]=acc[i.category]||[]).push(i); return acc; },{});
 
   const toggleCat = c => setCollapsed(p=>({...p,[c]:!p[c]}));
+
+  // Auto-suggest category when item name changes
+  const handleItemNameChange = (val) => {
+    setAddForm(p=>({...p,item:val}));
+    clearTimeout(catTimer.current);
+    if(val.trim().length < 3) { setCatSuggestion(""); return; }
+    catTimer.current = setTimeout(async () => {
+      setCatLoading(true);
+      const suggested = await autoCategory(val, addForm.brand, cats);
+      setCatSuggestion(suggested);
+      setAddForm(p=>({...p,category:suggested}));
+      setCatLoading(false);
+    }, 800);
+  };
 
   const updateQty = async (id, d) => {
     const it = items.find(i=>i.id===id); if(!it) return;
@@ -106,26 +137,24 @@ export default function App() {
 
   const deleteItem = async id => {
     const it = items.find(i=>i.id===id);
-    setItems(p=>p.filter(i=>i.id!==id));
-    setExpandedId(null);
+    setItems(p=>p.filter(i=>i.id!==id)); setExpandedId(null);
     try {
       await sbFetch(`pantry_items?id=eq.${id}`, { method:"DELETE", headers:{"Prefer":"return=minimal"} });
       if(it) addLog("removed", it.item, it.quantity);
       notify("Removed","err");
-    } catch(e) {
-      setItems(p=>[...p, it]);
-      notify("Delete failed","err");
-    }
+    } catch(e) { setItems(p=>[...p,it]); notify("Delete failed","err"); }
   };
 
   const addItem = async () => {
-    if(!addForm.item.trim()||!addForm.category) return;
-    const newItem = {...addForm, quantity:Number(addForm.quantity)};
+    if(!addForm.item.trim()) return;
+    const cat = addForm.category || catSuggestion || "Other";
+    const newItem = {...addForm, category:cat, quantity:Number(addForm.quantity)};
     try {
       const [created] = await sbFetch("pantry_items", { method:"POST", body: JSON.stringify(newItem) });
-      setItems(p=>[...p, created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
+      setItems(p=>[...p,created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
       addLog("added", newItem.item, newItem.quantity);
       setAddForm({item:"",brand:"",category:"",container:"Can",quantity:1});
+      setCatSuggestion("");
       notify("Item added!");
     } catch(e) { notify("Add failed: "+e.message,"err"); }
   };
@@ -137,11 +166,12 @@ export default function App() {
       const b64 = ev.target.result.split(",")[1];
       setScanImg(ev.target.result); setScanLoading(true); setScanResult(null);
       try {
+        const existingCatsStr = cats.join(", ");
         const res = await fetch("https://api.anthropic.com/v1/messages",{
           method:"POST", headers:{"Content-Type":"application/json"},
           body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:file.type,data:b64}},
-            {type:"text",text:"Return ONLY a JSON array: [{\"item\":\"name\",\"brand\":\"brand or empty\",\"container\":\"Can/Jar/Bottle/Box/Bag/Other\",\"quantity\":1,\"category\":\"best match from: Broths & Stocks, Canned Beans & Legumes, Canned Fish & Seafood, Canned Meats, Canned Shellfish, Canned Tomatoes, Canned Vegetables, Canned Eggs & Specialty, Condiments & Chili Pastes, Condiments & Pickled Items, Condiments & Preserved Vegetables, Condiments & Sauces, Dairy & Shelf-Stable Milk, Gravies & Meal Sauces, Prepared Meals, Sauces & Cooking Bases, Soups, Other\"}]. No other text."}
+            {type:"text",text:`Identify all pantry items in this image. For each, pick the best category from this list or invent a short new one if nothing fits: ${existingCatsStr}.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`}
           ]}]})
         });
         const data = await res.json();
@@ -163,22 +193,20 @@ export default function App() {
       } catch(e) { notify("Scan add failed","err"); }
     } else {
       let upd=[...items], removed=0;
-      for(const s of scanned) {
+      for(const s of scanned){
         const idx=upd.findIndex(i=>i.item.toLowerCase().includes(s.item.toLowerCase())||s.item.toLowerCase().includes(i.item.toLowerCase()));
         if(idx!==-1){
           const nq=upd[idx].quantity-(s.quantity||1);
           try {
             if(nq<=0){
-              await sbFetch(`pantry_items?id=eq.${upd[idx].id}`, {method:"DELETE",headers:{"Prefer":"return=minimal"}});
-              addLog("removed", upd[idx].item, upd[idx].quantity);
-              upd.splice(idx,1);
+              await sbFetch(`pantry_items?id=eq.${upd[idx].id}`,{method:"DELETE",headers:{"Prefer":"return=minimal"}});
+              addLog("removed",upd[idx].item,upd[idx].quantity); upd.splice(idx,1);
             } else {
-              await sbFetch(`pantry_items?id=eq.${upd[idx].id}`, {method:"PATCH", body:JSON.stringify({quantity:nq})});
-              addLog("removed", upd[idx].item, s.quantity||1);
-              upd[idx]={...upd[idx],quantity:nq};
+              await sbFetch(`pantry_items?id=eq.${upd[idx].id}`,{method:"PATCH",body:JSON.stringify({quantity:nq})});
+              addLog("removed",upd[idx].item,s.quantity||1); upd[idx]={...upd[idx],quantity:nq};
             }
             removed++;
-          } catch(e) { notify("Remove failed","err"); }
+          } catch(e){ notify("Remove failed","err"); }
         }
       }
       setItems(upd); notify("Removed "+removed+" item(s)");
@@ -225,15 +253,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* Toast */}
       {toast&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:toast.type==="err"?"#ef4444":ACCENT,color:"#fff",padding:"10px 20px",borderRadius:20,fontWeight:700,fontSize:13,zIndex:99,boxShadow:"0 4px 12px #0003"}}>{toast.msg}</div>}
 
       <div style={{...W,padding:"16px 16px 80px"}}>
 
-        {/* Loading */}
         {loading&&<div style={{textAlign:"center",padding:40,color:CARD,fontWeight:700,fontSize:16}}>Loading pantry...</div>}
 
-        {/* INVENTORY TAB */}
+        {/* INVENTORY */}
         {!loading&&tab==="inventory"&&<>
           <div style={{display:"flex",gap:8,marginBottom:14}}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search items or brands..." style={{...inp,flex:1}}/>
@@ -276,23 +302,47 @@ export default function App() {
           {Object.keys(grouped).length===0&&<div style={{textAlign:"center",color:"#f0e8f8",marginTop:40,fontSize:15}}>No items found</div>}
         </>}
 
-        {/* ADD TAB */}
+        {/* ADD */}
         {!loading&&tab==="add"&&<div style={{background:CARD,borderRadius:16,padding:20,boxShadow:"0 2px 12px #0001"}}>
           <div style={{fontWeight:800,fontSize:17,marginBottom:16,color:DARK}}>Add New Item</div>
-          {[["Item Name *","item","text","e.g. Cannellini Beans"],["Brand","brand","text","e.g. Cento"]].map(([lbl,f,t,ph])=>(
-            <div key={f} style={{marginBottom:12}}>
-              <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>{lbl}</label>
-              <input type={t} value={addForm[f]} onChange={e=>setAddForm(p=>({...p,[f]:e.target.value}))} placeholder={ph} style={inp}/>
-            </div>
-          ))}
+
           <div style={{marginBottom:12}}>
-            <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>Category *</label>
-            <select value={addForm.category} onChange={e=>setAddForm(p=>({...p,category:e.target.value}))} style={{...inp,cursor:"pointer"}}>
-              <option value="">Select a category...</option>
-              {cats.map(c=><option key={c} value={c}>{c}</option>)}
-              <option value="Other">Other</option>
-            </select>
+            <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>Item Name *</label>
+            <input value={addForm.item} onChange={e=>handleItemNameChange(e.target.value)} placeholder="e.g. Cannellini Beans" style={inp}/>
           </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>Brand</label>
+            <input value={addForm.brand} onChange={e=>setAddForm(p=>({...p,brand:e.target.value}))} placeholder="e.g. Cento" style={inp}/>
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>
+              Category {catLoading&&<span style={{fontSize:11,color:ACCENT,fontWeight:400}}>✨ suggesting...</span>}
+            </label>
+            <div style={{position:"relative"}}>
+              <input
+                value={addForm.category}
+                onChange={e=>setAddForm(p=>({...p,category:e.target.value}))}
+                onFocus={()=>setShowCatList(true)}
+                onBlur={()=>setTimeout(()=>setShowCatList(false),150)}
+                placeholder={catLoading?"Detecting category...":"Auto-detected or type your own"}
+                style={{...inp, background: catSuggestion&&!catLoading?"#f0fdf4":inp.background}}
+              />
+              {showCatList&&cats.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"2px solid #b8aee0",borderRadius:8,zIndex:20,maxHeight:180,overflowY:"auto",boxShadow:"0 4px 12px #0002"}}>
+                {cats.filter(c=>c.toLowerCase().includes(addForm.category.toLowerCase())||!addForm.category).map(c=>(
+                  <div key={c} onClick={()=>{setAddForm(p=>({...p,category:c}));setShowCatList(false);}}
+                    style={{padding:"9px 12px",cursor:"pointer",fontSize:13,borderBottom:"1px solid #f0e8f8"}}
+                    onMouseEnter={e=>e.target.style.background="#f5eeff"}
+                    onMouseLeave={e=>e.target.style.background="transparent"}>
+                    {c}
+                  </div>
+                ))}
+              </div>}
+            </div>
+            {catSuggestion&&!catLoading&&<div style={{fontSize:11,color:"#22c55e",marginTop:4}}>✨ Auto-suggested: {catSuggestion}</div>}
+          </div>
+
           <div style={{display:"flex",gap:10,marginBottom:16}}>
             <div style={{flex:1}}>
               <label style={{fontSize:13,fontWeight:600,color:DARK,display:"block",marginBottom:4}}>Container</label>
@@ -308,10 +358,10 @@ export default function App() {
           <button onClick={addItem} style={{...btn(ACCENT),width:"100%",padding:13,fontSize:14}}>Add to Pantry</button>
         </div>}
 
-        {/* SCAN TAB */}
+        {/* SCAN */}
         {!loading&&tab==="scan"&&<div style={{background:CARD,borderRadius:16,padding:20,boxShadow:"0 2px 12px #0001"}}>
           <div style={{fontWeight:800,fontSize:17,marginBottom:4,color:DARK}}>📷 Scan Items</div>
-          <div style={{fontSize:13,color:"#a09abb",marginBottom:16}}>Photo your pantry items — Claude will identify and update your inventory.</div>
+          <div style={{fontSize:13,color:"#a09abb",marginBottom:16}}>Photo your pantry items — Claude will identify and categorize everything automatically.</div>
           <div style={{display:"flex",gap:8,marginBottom:20}}>
             <button onClick={()=>setScanMode("add")} style={{flex:1,padding:"10px 0",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="add"?ACCENT:"transparent",color:scanMode==="add"?"#fff":ACCENT,outline:"2px solid "+ACCENT}}>+ Add items</button>
             <button onClick={()=>setScanMode("remove")} style={{flex:1,padding:"10px 0",border:"2px solid "+ACCENT,borderRadius:10,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit",background:scanMode==="remove"?ACCENT:"transparent",color:scanMode==="remove"?"#fff":ACCENT}}>- Remove items</button>
@@ -335,8 +385,8 @@ export default function App() {
             {scanResult.map((s,i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #f0e8f8",fontSize:13}}>
                 <span style={{flex:1,fontWeight:600}}>{s.item}</span>
-                <span style={{color:"#a09abb"}}>{s.brand}</span>
-                <span style={{background:"#f0e8f8",borderRadius:4,padding:"2px 6px",fontSize:11}}>{s.category}</span>
+                <span style={{color:"#a09abb",fontSize:11}}>{s.brand}</span>
+                <span style={{background:"#f0e8f8",borderRadius:4,padding:"2px 6px",fontSize:11,color:ACCENT}}>{s.category}</span>
               </div>
             ))}
             <div style={{display:"flex",gap:8,marginTop:14}}>
@@ -347,7 +397,7 @@ export default function App() {
           {scanResult&&scanResult.error&&<div style={{background:"#fff5f5",border:"1px solid #fecaca",borderRadius:10,padding:14,color:"#ef4444",fontSize:13}}>Could not identify items. Try a clearer photo.</div>}
         </div>}
 
-        {/* LOG TAB */}
+        {/* LOG */}
         {!loading&&tab==="log"&&<div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div style={{fontWeight:800,fontSize:16,color:CARD}}>Activity — last 30 days</div>
@@ -370,7 +420,7 @@ export default function App() {
           }
         </div>}
 
-        {/* HOW TO USE TAB */}
+        {/* HOW TO USE */}
         {tab==="info"&&<div style={{background:"#fff",border:"3px solid #111",padding:"14px 16px",fontFamily:"Arial,sans-serif",color:"#111"}}>
           <div style={{fontWeight:900,fontSize:34,lineHeight:1,marginBottom:2}}>How to Use</div>
           <div style={{fontSize:12,marginBottom:6}}>Mise en Stock Pantry Tracker</div>
@@ -395,7 +445,7 @@ export default function App() {
               ))}
             </div>
           ))}
-          <div style={{fontSize:12,lineHeight:1.5,marginTop:4}}><strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every visible item and updates your pantry in one shot.</div>
+          <div style={{fontSize:12,lineHeight:1.5,marginTop:4}}><strong>* Pro tip:</strong> Scan a whole shelf at once — Claude identifies every item and picks the right category automatically.</div>
           <div style={{height:8,background:"#111",margin:"14px 0 10px"}}/>
           <div style={{textAlign:"center",fontSize:11,letterSpacing:"2px",color:"#555",fontWeight:600}}>POWERED BY TINKERBOT STUDIOS</div>
         </div>}
