@@ -65,6 +65,7 @@ export default function App() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [log, setLog] = useState([]);
+  const [logLoading, setLogLoading] = useState(false);
   const [tab, setTab] = useState("inventory");
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("All");
@@ -84,7 +85,21 @@ export default function App() {
   const catTimer = useRef();
 
   const notify = (msg, type="ok") => { setToast({msg,type}); setTimeout(()=>setToast(null),2500); };
-  const addLog = (type, item, qty) => setLog(p=>[{id:Date.now(),type,item,qty,at:Date.now()},...p].slice(0,100));
+  const addLog = async (type, item, qty, brand="", category="") => {
+    const entry = { type, item, brand, qty, category };
+    setLog(p=>[{...entry, id: Date.now(), at: new Date().toISOString()},...p].slice(0,100));
+    try { await sbFetch("activity_log", { method:"POST", body: JSON.stringify(entry) }); }
+    catch(e) { console.error("Log write failed", e); }
+  };
+
+  // Load log from Supabase
+  useEffect(() => {
+    const thirtyDaysAgo = new Date(Date.now()-30*24*60*60*1000).toISOString();
+    setLogLoading(true);
+    sbFetch(`activity_log?select=*&at=gte.${thirtyDaysAgo}&order=at.desc&limit=100`)
+      .then(data => { setLog(data||[]); setLogLoading(false); })
+      .catch(() => setLogLoading(false));
+  }, []);
 
   useEffect(() => {
     sbFetch("pantry_items?select=*&order=category.asc,item.asc")
@@ -125,7 +140,7 @@ export default function App() {
     setItems(p=>p.map(i=>i.id===id?{...i,quantity:newQ}:i));
     try {
       await sbFetch(`pantry_items?id=eq.${id}`, { method:"PATCH", body: JSON.stringify({quantity:newQ}) });
-      addLog(d>0?"added":"removed", it.item, Math.abs(d));
+      addLog(d>0?"added":"removed", it.item, Math.abs(d), it.brand, it.category);
     } catch(e) {
       setItems(p=>p.map(i=>i.id===id?{...i,quantity:it.quantity}:i));
       notify("Update failed","err");
@@ -137,7 +152,7 @@ export default function App() {
     setItems(p=>p.filter(i=>i.id!==id)); setExpandedId(null);
     try {
       await sbFetch(`pantry_items?id=eq.${id}`, { method:"DELETE", headers:{"Prefer":"return=minimal"} });
-      if(it) addLog("removed", it.item, it.quantity);
+      if(it) addLog("removed", it.item, it.quantity, it.brand, it.category);
       notify("Removed","err");
     } catch(e) { setItems(p=>[...p,it]); notify("Delete failed","err"); }
   };
@@ -149,7 +164,7 @@ export default function App() {
     try {
       const [created] = await sbFetch("pantry_items", { method:"POST", body: JSON.stringify(newItem) });
       setItems(p=>[...p,created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
-      addLog("added", newItem.item, newItem.quantity);
+      addLog("added", newItem.item, newItem.quantity, newItem.brand, newItem.category);
       setAddForm({item:"",brand:"",category:"",container:"Can",quantity:1});
       setCatSuggestion("");
       notify("Item added!");
@@ -186,7 +201,7 @@ export default function App() {
       try {
         const created = await sbFetch("pantry_items", { method:"POST", body: JSON.stringify(scanned.map(s=>({...s,quantity:s.quantity||1}))) });
         setItems(p=>[...p,...created].sort((a,b)=>a.category.localeCompare(b.category)||a.item.localeCompare(b.item)));
-        scanned.forEach(s=>addLog("added", s.item, s.quantity||1));
+        scanned.forEach(s=>addLog("added", s.item, s.quantity||1, s.brand||"", s.category||""));
         notify("Added "+scanned.length+" item(s)!");
       } catch(e) { notify("Scan add failed","err"); }
     } else {
@@ -198,10 +213,10 @@ export default function App() {
           try {
             if(nq<=0){
               await sbFetch(`pantry_items?id=eq.${upd[idx].id}`,{method:"DELETE",headers:{"Prefer":"return=minimal"}});
-              addLog("removed",upd[idx].item,upd[idx].quantity); upd.splice(idx,1);
+              addLog("removed",upd[idx].item,upd[idx].quantity,upd[idx].brand,upd[idx].category); upd.splice(idx,1);
             } else {
               await sbFetch(`pantry_items?id=eq.${upd[idx].id}`,{method:"PATCH",body:JSON.stringify({quantity:nq})});
-              addLog("removed",upd[idx].item,s.quantity||1); upd[idx]={...upd[idx],quantity:nq};
+              addLog("removed",upd[idx].item,s.quantity||1,upd[idx].brand,upd[idx].category); upd[idx]={...upd[idx],quantity:nq};
             }
             removed++;
           } catch(e){ notify("Remove failed","err"); }
@@ -212,7 +227,6 @@ export default function App() {
     setScanResult(null); setScanImg(null); setTab("inventory");
   };
 
-  const recentLog = log.filter(e=>e.at>=Date.now()-30*24*60*60*1000);
   const formattedDate = new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
   const inp = {width:"100%",padding:"10px 12px",border:"2px solid #b8aee0",borderRadius:8,fontSize:14,boxSizing:"border-box",background:"#fff",fontFamily:"inherit",outline:"none"};
   const btn = (bg,color)=>({padding:"10px 18px",background:bg,color:color||"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"});
@@ -395,26 +409,29 @@ export default function App() {
           {scanResult&&scanResult.error&&<div style={{background:"#fff5f5",border:"1px solid #fecaca",borderRadius:10,padding:14,color:"#ef4444",fontSize:13}}>Could not identify items. Try a clearer photo.</div>}
         </div>}
 
-        {/* LOG */}
         {!loading&&tab==="log"&&<div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div style={{fontWeight:800,fontSize:16,color:CARD}}>Activity — last 30 days</div>
-            {recentLog.length>0&&<button onClick={()=>setLog([])} style={{...btn("#ffffff33",CARD),padding:"5px 12px",fontSize:12}}>Clear</button>}
           </div>
-          {recentLog.length===0
-            ? <div style={{background:CARD,borderRadius:14,padding:32,textAlign:"center",color:"#a09abb",fontSize:14}}>No activity yet. Add or remove items to see your log here.</div>
-            : <div style={{background:CARD,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px #0002"}}>
-                {recentLog.map((e,idx)=>(
-                  <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:idx<recentLog.length-1?"1px solid #f0e8f8":"none"}}>
-                    <span style={{fontSize:18}}>{e.type==="added"?"➕":"➖"}</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:600,fontSize:14,color:DARK}}>{e.item}</div>
-                      <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>{e.type==="added"?"Added":"Removed"} {e.qty} &bull; {timeAgo(e.at)}</div>
+          {logLoading
+            ? <div style={{textAlign:"center",padding:40,color:CARD,fontWeight:700}}>Loading log...</div>
+            : log.length===0
+              ? <div style={{background:CARD,borderRadius:14,padding:32,textAlign:"center",color:"#a09abb",fontSize:14}}>No activity yet. Add or remove items to see your log here.</div>
+              : <div style={{background:CARD,borderRadius:14,overflow:"hidden",boxShadow:"0 2px 8px #0002"}}>
+                  {log.map((e,idx)=>(
+                    <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",borderBottom:idx<log.length-1?"1px solid #f0e8f8":"none"}}>
+                      <span style={{fontSize:18}}>{e.type==="added"?"➕":"➖"}</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:600,fontSize:14,color:DARK}}>{e.item}</div>
+                        <div style={{fontSize:11,color:"#a09abb",marginTop:1}}>
+                          {e.type==="added"?"Added":"Removed"} {e.qty} &bull; {timeAgo(new Date(e.at).getTime())}
+                          {e.category&&<span> &bull; {e.category}</span>}
+                        </div>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:700,color:e.type==="added"?"#22c55e":"#ef4444",background:e.type==="added"?"#f0fdf4":"#fff5f5",borderRadius:6,padding:"3px 8px"}}>{e.type==="added"?"+":"-"}{e.qty}</span>
                     </div>
-                    <span style={{fontSize:11,fontWeight:700,color:e.type==="added"?"#22c55e":"#ef4444",background:e.type==="added"?"#f0fdf4":"#fff5f5",borderRadius:6,padding:"3px 8px"}}>{e.type==="added"?"+":"-"}{e.qty}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
           }
         </div>}
 
