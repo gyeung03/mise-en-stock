@@ -332,7 +332,7 @@ STEP 1 — COUNT CAREFULLY: Before doing anything else, count every physically s
 STEP 2 — READ EACH PACKAGE: For every package you counted, extract:
 - item: the food name (e.g. "Spaghetti", "Diced Tomatoes") — no brand in this field
 - brand: read the brand name exactly from the label (e.g. "365 by Whole Foods Market", "Heinz", "Barilla"). Never leave blank if a brand is visible.
-- size: the net weight or volume printed on the label (e.g. "16 oz", "454g", "28 oz (1 lb 12 oz)"). Only include if fully and clearly visible — use empty string if cut off, obscured, or uncertain. Do not guess.
+- size: the net weight or volume printed on the label (e.g. "16 oz", "454g", "1 lb"). Read it even if the text is upside-down or rotated — look for numbers followed by oz, g, kg, lb, ml, or L anywhere on the package. Only leave blank if the size is completely absent or fully cut off from the image.
 - container: Can / Jar / Bottle / Box / Bag / Other
 - quantity: always 1 per entry. NEVER set quantity:2 or higher. If 2 identical packages are visible, return 2 separate objects in the array. This is mandatory.
 - category: pick from this list or invent a short new one if nothing fits: ${locCats}
