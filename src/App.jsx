@@ -325,7 +325,26 @@ export default function App() {
           body:JSON.stringify({
             image:dataUrl.split(",")[1],
             mimeType:"image/jpeg",
-            prompt:`Identify all items in this image. These are ${scanLoc} items. For each, pick the best category from this list or invent a short new one if nothing fits: ${locCats}.\n\nFor the size field: only include the size if it is fully and clearly visible on the packaging. If the size text is partially hidden, obscured, cut off, or you are not 100% certain of the full value, leave size as an empty string — do not guess.\n\nReturn ONLY a JSON array: [{"item":"name","brand":"brand or empty string","size":"fully visible size with unit e.g. 14.5 oz, 400g, or empty string if unclear","container":"Can/Jar/Bottle/Box/Bag/Other","quantity":1,"category":"category name"}]. No other text.`
+            prompt:`You are scanning a photo of grocery/food packaging for a pantry inventory app.
+
+STEP 1 — COUNT: Look carefully at the entire image. Count how many physically separate, individual packages or containers are visible. Each distinct package is one item entry.
+
+STEP 2 — READ EACH PACKAGE: For every package you counted, extract:
+- item: the food name (e.g. "Spaghetti", "Diced Tomatoes") — no brand in this field
+- brand: read the brand name exactly from the label (e.g. "365 by Whole Foods Market", "Heinz", "Barilla"). Never leave blank if a brand is visible.
+- size: the net weight or volume printed on the label (e.g. "16 oz", "454g", "28 oz (1 lb 12 oz)"). Only include if fully and clearly visible — use empty string if cut off, obscured, or uncertain. Do not guess.
+- container: Can / Jar / Bottle / Box / Bag / Other
+- quantity: 1 per package entry (if 2 identical packages are visible, return 2 separate entries — do not set quantity:2 on one entry)
+- category: pick from this list or invent a short new one if nothing fits: ${locCats}
+- location: "${scanLoc}"
+
+STEP 3 — OUTPUT: Return ONLY a valid JSON array with one object per package. No markdown, no explanation, no extra text.
+
+Example for 2 identical packages:
+[
+  {"item":"Spaghetti","brand":"365 by Whole Foods Market","size":"16 oz","container":"Bag","quantity":1,"category":"Pasta & Grains","location":"pantry"},
+  {"item":"Spaghetti","brand":"365 by Whole Foods Market","size":"16 oz","container":"Bag","quantity":1,"category":"Pasta & Grains","location":"pantry"}
+]`
           })
         });
         const data=await res.json();
