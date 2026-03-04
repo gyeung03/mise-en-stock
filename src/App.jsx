@@ -327,14 +327,14 @@ export default function App() {
             mimeType:"image/jpeg",
             prompt:`You are scanning a photo of grocery/food packaging for a pantry inventory app.
 
-STEP 1 — COUNT: Look carefully at the entire image. Count how many physically separate, individual packages or containers are visible. Each distinct package is one item entry.
+STEP 1 — COUNT CAREFULLY: Before doing anything else, count every physically separate package or container visible in the image. Look for stacked, overlapping, or side-by-side duplicates. If you see 2 packages, you MUST return 2 objects. If you see 3, return 3. Never merge multiple packages into one entry. Undercounting is an error.
 
 STEP 2 — READ EACH PACKAGE: For every package you counted, extract:
 - item: the food name (e.g. "Spaghetti", "Diced Tomatoes") — no brand in this field
 - brand: read the brand name exactly from the label (e.g. "365 by Whole Foods Market", "Heinz", "Barilla"). Never leave blank if a brand is visible.
 - size: the net weight or volume printed on the label (e.g. "16 oz", "454g", "28 oz (1 lb 12 oz)"). Only include if fully and clearly visible — use empty string if cut off, obscured, or uncertain. Do not guess.
 - container: Can / Jar / Bottle / Box / Bag / Other
-- quantity: 1 per package entry (if 2 identical packages are visible, return 2 separate entries — do not set quantity:2 on one entry)
+- quantity: always 1 per entry. NEVER set quantity:2 or higher. If 2 identical packages are visible, return 2 separate objects in the array. This is mandatory.
 - category: pick from this list or invent a short new one if nothing fits: ${locCats}
 - location: "${scanLoc}"
 
